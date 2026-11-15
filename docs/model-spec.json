@@ -39,7 +39,7 @@
       "name": "lead_follow_up",
       "source_tab": "2.Lead Follow-up",
       "source_sheet_id": 1061261165,
-      "source_count": 810,
+      "source_count": 560,
       "fields": [
         {"name": "followup_id", "type": "text", "primary_key": true, "nullable": false},
         {"name": "lead_id", "type": "text", "primary_key": false, "nullable": false, "foreign_key_hint": true, "references": {"table": "mobilisation_lead", "column": "candidate_id"}},

@@ -26,6 +26,19 @@ class RunnerSafetyTests(unittest.TestCase):
                 self.assertEqual(R.main([command,'--execute']),2)
                 self.assertEqual(R.main([command,'--manifest',self.manifest.path]),2)
             worker.assert_not_called();data.assert_not_called()
+    def test_model_source_metadata_matches_every_approved_manifest(self):
+        registry=json.loads((R.ROOT/'config/approved-load-manifests.json').read_text())
+        model=json.loads((R.ROOT/'docs/model-spec.json').read_text())
+        tables={t['source_tab']:t for t in model['tables'] if t.get('source_tab')}
+        for path in registry['manifests']:
+            approved=R.Manifest(R.ROOT/path)
+            with self.subTest(manifest=path):
+                self.assertEqual(set(tables),set(approved.tabs))
+            for tab,spec in approved.tabs.items():
+                with self.subTest(manifest=path,tab=tab):
+                    self.assertEqual(tables[tab]['source_count'],spec['records'])
+                    self.assertEqual(tables[tab]['source_sheet_id'],spec['sheet_id'])
+
     def test_unknown_and_modified_manifest_refused(self):
         with self.assertRaises(L.StopLoad):R.Manifest(self.work/'unapproved.json')
         with patch.object(R.hashlib,'sha256',return_value=SimpleNamespace(hexdigest=lambda:'bad')):
