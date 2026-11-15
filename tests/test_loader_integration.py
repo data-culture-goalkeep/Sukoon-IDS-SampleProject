@@ -44,6 +44,8 @@ class LocalWorker(L.Worker):
         lines=[line for line in result.splitlines() if line.startswith('{')]
         return [{'receipt':json.loads(lines[-1])}] if lines else []
 
+    def read_query(self,sql):return self.query(sql)
+
 class PostgreSQLLoaderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -100,6 +102,16 @@ class PostgreSQLLoaderTests(unittest.TestCase):
                 cells=[{'userEnteredValue':{'stringValue':values[h.split(' (')[0]]}} if h.split(' (')[0] in values else {} for h in L.TABS[tab]['source_headers']]
                 result.append(L.transform(tab,n,cells,L.TABS[tab]['source_headers']))
         return result
+    def test_first_run_inventory_is_constant_and_rejects_foreign_rows(self):
+        rows=self.rows();self.prepare(rows)
+        reads=[q for q in self.worker.queries if 'READ ONLY' in q]
+        self.assertEqual(len(reads),1)
+        self.assertNotIn('raw_values',reads[0])
+        self.sql("INSERT INTO ids.partner_organisation(partner_organisation_id) VALUES ('untracked');")
+        with self.assertRaisesRegex(L.StopLoad,'RECONCILIATION_REQUIRED'):
+            self.loader(rows).reconcile(rows,copy.deepcopy(rows),authorized=True)
+        self.assertEqual(self.worker.writes,0)
+
     def test_goal_review_new_boundaries_preserve_lower_limits(self):
         sections={'SMART_GOALS':1,'FUNCTIONAL_LEARNING':0,'HOSPITALITY':0}
         self.sql("INSERT INTO ids.reference_list(reference_value_id,list_name,display_label) VALUES ('programme.ILS','programme','Synthetic ILS'),('goal_section.SMART_GOALS','goal_section','Synthetic SMART'),('goal_section.FUNCTIONAL_LEARNING','goal_section','Synthetic Functional'),('goal_section.HOSPITALITY','goal_section','Synthetic Hospitality'); INSERT INTO ids.learner_profile(learner_id) VALUES ('learner'); INSERT INTO ids.batch(batch_id,program_id) VALUES ('batch','programme.ILS'); INSERT INTO ids.enrolment(enrolment_id,learner_id,batch_id) VALUES ('enrolment','learner','batch');")
@@ -115,13 +127,14 @@ class PostgreSQLLoaderTests(unittest.TestCase):
                 self.sql(f"UPDATE ids.goal_review SET {column}=NULL WHERE goal_review_id='review{n}';")
 
     def test_month_conversion_database_and_raw_lineage(self):
-        self.sql("INSERT INTO ids.staff(staff_id) VALUES ('fixture_staff_id3');")
         row=fixture();headers=L.TABS[row['tab']]['source_headers']
         cells=[{'userEnteredValue':v} for v in row['raw']]
         index=next(i for i,h in enumerate(headers) if h.split(' (')[0]=='month')
         cells[index]={'userEnteredValue':{'stringValue':'2026-11'}}
         rows=[L.transform(row['tab'],3,cells,headers)]
-        self.prepare(rows).load(rows,copy.deepcopy(rows))
+        loader=self.prepare(rows)
+        self.sql("INSERT INTO ids.staff(staff_id) VALUES ('fixture_staff_id3');")
+        loader.load(rows,copy.deepcopy(rows))
         self.assertEqual(self.sql('SELECT month FROM ids.monthly_target;').strip(),'2026-11-01')
         self.assertEqual(self.sql(f"SELECT raw_values->{index}->>'stringValue' FROM ids_import.source_row;").strip(),'2026-11')
 

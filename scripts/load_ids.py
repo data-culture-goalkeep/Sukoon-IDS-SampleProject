@@ -19,6 +19,11 @@ import tempfile
 from pathlib import Path
 import re
 import urllib.request
+import urllib.error
+import time as clock
+from http import HTTPStatus
+from email.utils import parsedate_to_datetime
+from datetime import timezone
 import uuid
 from zoneinfo import ZoneInfo
 
@@ -35,6 +40,17 @@ assert SOURCE == AUDIT['source_file_id']
 REQUIRED_MIGRATIONS = tuple(AUDIT['required_migrations'])
 TABLES = {t['source_tab']: t for t in SPEC['tables']}
 TABS = {t['tab']: t for t in AUDIT['tabs']}
+# Explicit reviewed inventory scope; never construct SQL from source cells.
+INVENTORY_DATA_TABLES = (
+    'mobilisation_lead','lead_follow_up','mobilisation_activity','partner_organisation',
+    'monthly_target','report_meeting_log','learner_profile','family_contact',
+    'learner_sensitive_details','batch','enrolment','fee_instalment','fee_payment',
+    'master_programme_schedule','standard_topic','batch_schedule','learner_session_log',
+    'goal','goal_review','assessment_event','criterion_catalogue','criterion_score',
+    'staff','reference_list',
+)
+INVENTORY_IMPORT_TABLES = ('import_run','import_chunk','source_row','validation_issue')
+
 CODES = {'SCOPE_MISMATCH', 'NOT_APPROVED', 'HEADER_CHANGED', 'ROW_INVALID',
          'FORMULA_FOUND', 'TYPE_INVALID', 'REQUIRED_VALUE', 'SOURCE_CHANGED',
          'PAYLOAD_TOO_LARGE', 'WRITE_FAILED_OR_UNCERTAIN', 'RECEIPT_INVALID',
@@ -210,18 +226,119 @@ class Worker:
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, *args): return None
         self.opener = urllib.request.build_opener(NoRedirect())
+        self.last_response = None
+        self.failed_requests = []
+        self.minimum_interval = 0.6
+        self.read_retries = 0  # Live stop-on-first-failure policy; opt-in bounded read retries only.
+        self.next_request_at = 0.0
+        self.diagnostics_path = ROOT / 'work' / 'worker-request-diagnostics.jsonl'
+
+    @staticmethod
+    def response_metadata(status, headers, elapsed, error=None):
+        safe = {}
+        for name in ('retry-after','ratelimit-limit','ratelimit-remaining','ratelimit-reset',
+                     'ratelimit-policy','x-ratelimit-limit','x-ratelimit-remaining','x-ratelimit-reset'):
+            value = headers.get(name) if headers else None
+            if value is None: continue
+            value = str(value)
+            if len(value) <= 128 and re.fullmatch(r'[0-9.,; =w+-]+',value):
+                safe[name] = value
+            elif name == 'retry-after':
+                try:
+                    date = parsedate_to_datetime(value)
+                    if date.tzinfo is None: raise ValueError()
+                    safe[name] = date.astimezone(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
+                except (ValueError,TypeError,OverflowError): safe[name] = '[redacted-invalid]'
+            else: safe[name] = '[redacted-invalid]'
+        try: phrase = HTTPStatus(status).phrase
+        except (ValueError,TypeError): phrase = 'Unknown HTTP status' if status is not None else 'No HTTP response'
+        return {'http_status':status,'status_text':phrase,'headers':safe,
+                'elapsed_seconds':round(elapsed,3),'error':error}
+
+    def record_failure(self, metadata):
+        # Only allowlisted metadata: never URL, token, SQL, body or exception text.
+        self.failed_requests.append(metadata)
+        self.diagnostics_path.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+        fd = os.open(self.diagnostics_path,os.O_WRONLY|os.O_APPEND|os.O_CREAT|os.O_NOFOLLOW,0o600)
+        with os.fdopen(fd,'a') as output:
+            os.fchmod(output.fileno(),0o600)
+            output.write(canonical(metadata)+'\n');output.flush();os.fsync(output.fileno())
 
     def request(self, suffix, payload=None):
+        # POST /database/query is conservatively a write. Only read_query may opt in.
+        return self._request(suffix,payload)
+
+    def _request(self, suffix, payload=None):
         if suffix not in ('', '/postgrest', '/database/query'): raise StopLoad('SCOPE_MISMATCH')
         data = None if payload is None else canonical(payload).encode()
         if data is not None and len(data) > MAX_BYTES: raise StopLoad('PAYLOAD_TOO_LARGE')
         req = urllib.request.Request('https://api.supabase.com/v1/projects/' + PROJECT + suffix,
             data=data, headers={'Authorization': 'Bearer ' + self.token, 'Content-Type': 'application/json'})
+        delay = max(0,self.next_request_at-clock.monotonic())
+        while delay > 0:
+            clock.sleep(min(delay,30));delay=max(0,self.next_request_at-clock.monotonic())
+        started = clock.monotonic(); status = None; headers = None
+        self.next_request_at = started+self.minimum_interval
         try:
-            with self.opener.open(req, timeout=90) as response: return json.load(response)
-        except Exception: raise StopLoad('WRITE_FAILED_OR_UNCERTAIN') from None
+            with self.opener.open(req, timeout=90) as response:
+                status = response.status; headers = response.headers
+                result = json.load(response)
+            self.last_response = self.response_metadata(status,headers,clock.monotonic()-started)
+            return result
+        except Exception as exc:
+            if isinstance(exc,urllib.error.HTTPError):
+                status = exc.code; headers = exc.headers; error = 'http_error';exc.close()
+            elif isinstance(exc,TimeoutError) or (isinstance(exc,urllib.error.URLError) and isinstance(exc.reason,TimeoutError)):
+                error = 'timeout'
+            elif isinstance(exc,(urllib.error.URLError,OSError)): error = 'network_error'
+            elif isinstance(exc,json.JSONDecodeError): error = 'invalid_response'
+            else: error = 'request_error'
+            self.last_response = self.response_metadata(status,headers,clock.monotonic()-started,error)
+            retry_after = self.last_response['headers'].get('retry-after')
+            delay = 1.0
+            if retry_after:
+                try: delay=max(delay,float(retry_after))
+                except ValueError:
+                    try: delay=max(delay,parsedate_to_datetime(retry_after).timestamp()-clock.time())
+                    except (ValueError,TypeError,OverflowError): pass
+            self.next_request_at = max(self.next_request_at,clock.monotonic()+delay)
+            self.record_failure(self.last_response)
+            raise StopLoad('WRITE_FAILED_OR_UNCERTAIN') from None
 
     def query(self, sql): return self.request('/database/query', {'query': sql})
+
+    def read_query(self, sql):
+        # Validate the transaction envelope, never classify by substrings in SQL/data.
+        from pglast import parse_sql, ast, enums
+        if type(self.read_retries) is not int or not 0<=self.read_retries<=2: raise StopLoad('SCOPE_MISMATCH')
+        try: statements=parse_sql(sql)
+        except Exception: raise StopLoad('SCOPE_MISMATCH') from None
+        if len(statements)<3: raise StopLoad('SCOPE_MISMATCH')
+        first,last=statements[0].stmt,statements[-1].stmt
+        if not isinstance(first,ast.TransactionStmt) or first.kind!=enums.TransactionStmtKind.TRANS_STMT_BEGIN or not isinstance(last,ast.TransactionStmt) or last.kind!=enums.TransactionStmtKind.TRANS_STMT_COMMIT:
+            raise StopLoad('SCOPE_MISMATCH')
+        readonly_options = [o.arg for o in first.options or () if o.defname=='transaction_read_only']
+        if len(readonly_options)!=1: raise StopLoad('SCOPE_MISMATCH')
+        readonly_value = readonly_options[0]
+        if isinstance(readonly_value,ast.A_Const): readonly_value = readonly_value.val
+        if not isinstance(readonly_value,ast.Integer) or readonly_value.ival!=1:
+            raise StopLoad('SCOPE_MISMATCH')
+        # Read-only DO blocks are reviewed reconciliation code; reject transaction
+        # mode changes even inside them. Do not retry arbitrary SELECT functions.
+        for stmt in statements[1:-1]:
+            if not isinstance(stmt.stmt,(ast.SelectStmt,ast.VariableSetStmt,ast.DoStmt)):
+                raise StopLoad('SCOPE_MISMATCH')
+            if self.read_retries and isinstance(stmt.stmt,ast.DoStmt): raise StopLoad('SCOPE_MISMATCH')
+            if isinstance(stmt.stmt,ast.VariableSetStmt) and stmt.stmt.name not in ('standard_conforming_strings','search_path','lock_timeout','statement_timeout'):
+                raise StopLoad('SCOPE_MISMATCH')
+        # Default is zero: a live failed read stops, preserving the user's stop rule.
+        for attempt in range(self.read_retries+1):
+            try: return self.query(sql)
+            except StopLoad:
+                metadata=self.last_response or {}
+                if attempt==self.read_retries or metadata.get('http_status') not in (429,502,503,504): raise
+                self.next_request_at=max(self.next_request_at,clock.monotonic()+min(2**attempt,30))
+
 
     def preflight(self):
         p = self.request(''); c = self.request('/postgrest')
@@ -318,12 +435,14 @@ class Journal:
         finally:
             if os.path.exists(temp): os.unlink(temp)
 
-    def reconciled(self, approval, mode):
+    def reconciled(self, approval, mode, evidence=None):
         generation = str(uuid.uuid4())
         base = {'run':approval.run_id,'snapshot':approval.snapshot_hash,'generation':generation}
         # A crash between the two fsync'd replaces leaves mismatched state: stop.
         self._atomic(self.marker, base)
-        self._atomic(self.path, dict(base,state='ready',attempt=None,mode=mode))
+        state=dict(base,state='ready',attempt=None,mode=mode)
+        if evidence is not None: state['reconciliation_evidence']=evidence
+        self._atomic(self.path,state)
 
     def begin(self, approval, attempt, receipt):
         state = self.read()
@@ -377,7 +496,7 @@ class Loader:
             data.append(dict(row, record=dict(row['record'], source_row_id=sid),
                              source_id=sid, raw_hash=sha(row['raw'])))
         columns = ','.join(ident(k) for k in data[0]['record'])
-        fields = ' AND '.join(f't.{ident(k)} IS NOT DISTINCT FROM e.{ident(k)}' for k in data[0]['record'])
+        fields = f't.{ident(pk)} = e.{ident(pk)} AND ' + ' AND '.join(f't.{ident(k)} IS NOT DISTINCT FROM e.{ident(k)}' for k in data[0]['record'])
         predicate = f'import_chunk_id={chunk_id}'
         # A single JSON payload and set of loops keeps 174-row bootstrap bounded.
         # Field/table names come only from the checked-in model, never source data.
@@ -447,7 +566,7 @@ END;
         with self.journal.exclusive():
             return self._load_locked(rows, repeated_rows)
 
-    def reconcile(self, rows, repeated_rows, *, authorized=False):
+    def reconcile(self, rows, repeated_rows, *, authorized=False, absence_evidence=None):
         """Explicit operator-authorized read-only reconciliation; never auto-retry.
 
         Required both to provision a first run and after loss/corruption/uncertainty.
@@ -460,16 +579,49 @@ END;
             self.approval.validate(rows)
             if self.journal.run_id != self.approval.run_id: raise StopLoad('SCOPE_MISMATCH')
             if sha(rows) != sha(repeated_rows): raise StopLoad('SOURCE_CHANGED')
+            if absence_evidence is not None:
+                # Explicit operator-authorized result of the indexed read-only
+                # checkpoint/lineage check. Never accept partial or unknown results.
+                e=thaw(private_snapshot(absence_evidence));state=self.journal.read()
+                if e.get('project')!=PROJECT or e.get('run')!=self.approval.run_id or e.get('database_writes')!=0 or e.get('counts')!={'checkpoint_rows':0,'lineage_rows':0}:
+                    raise StopLoad('RECONCILIATION_REQUIRED')
+                if e.get('metadata',{}).get('http_status') not in (200,201) or e.get('metadata',{}).get('error') is not None:
+                    raise StopLoad('RECONCILIATION_REQUIRED')
+                chunk=[r for r in rows if r['sheet']==e.get('sheet') and e.get('first_row',0)<=r['row']<=e.get('last_row',0)]
+                if not chunk or len(chunk)>MAX_ROWS or len({r['tab']for r in chunk})!=1 or len(chunk)!=e['last_row']-e['first_row']+1:
+                    raise StopLoad('RECONCILIATION_REQUIRED')
+                _,expected=self._chunk_sql(chunk)
+                if e.get('chunk')!=expected['chunk'] or state.get('run')!=self.approval.run_id or state.get('snapshot')!=self.approval.snapshot_hash or state.get('state')!='in_flight' or state.get('receipt')!={'run':self.approval.run_id,'chunks':[expected]}:
+                    raise StopLoad('RECONCILIATION_REQUIRED')
+                self.worker.preflight()
+                saved={'outcome':'not_committed','project':PROJECT,'run':self.approval.run_id,'chunk':expected['chunk'],'sheet':e['sheet'],'first_row':e['first_row'],'last_row':e['last_row'],'checkpoint_rows':0,'lineage_rows':0,'read_http_status':e['metadata']['http_status'],'read_elapsed_seconds':e.get('seconds'),'dashboard_evidence_supplied_by_user':e.get('dashboard_evidence_supplied_by_user',{})}
+                self.journal.reconciled(self.approval,'resume',evidence=saved)
+                return {'run':self.approval.run_id,'mode':'resume','reconciled':True,'outcome':'not_committed','chunk':expected['chunk']}
             self.worker.preflight()
-            compiled, chunks = self._compile(rows)
             rid = literal(self.approval.run_id) + '::uuid'
             def read_check(body, receipt_expression):
-                sql = ("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL standard_conforming_strings=on;\nSET LOCAL search_path=pg_catalog;\nSET LOCAL lock_timeout='5s';\nSET LOCAL statement_timeout='60s';\nSELECT pg_advisory_xact_lock(718134002);\n" + block(body) +
+                sql = ("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;\nSET LOCAL standard_conforming_strings=on;\nSET LOCAL search_path=pg_catalog;\nSET LOCAL lock_timeout='5s';\nSET LOCAL statement_timeout='60s';\n" + ("SELECT pg_advisory_xact_lock(718134002);\n" + block(body) if body else '') +
                        f"\nSELECT {receipt_expression} AS receipt;\nCOMMIT;")
                 if len(canonical({'query':sql}).encode()) > MAX_BYTES: raise StopLoad('PAYLOAD_TOO_LARGE')
-                response = self.worker.query(sql)
+                response = self.worker.read_query(sql)
                 if not isinstance(response,list) or len(response)!=1: raise StopLoad('RECEIPT_INVALID')
                 return response[0].get('receipt',{})
+            inventory_base = {'run':self.approval.run_id,'snapshot':self.approval.snapshot_hash,'inventory_check':True}
+            if len(INVENTORY_DATA_TABLES)!=24 or set(INVENTORY_DATA_TABLES)!={t['name'] for t in TABLES.values()} or set(TABLES)!=set(TABS):
+                raise StopLoad('SCOPE_MISMATCH')
+            counts = [f'(SELECT pg_catalog.count(*) FROM ids.{ident(name)})' for name in INVENTORY_DATA_TABLES]
+            counts += [f'(SELECT pg_catalog.count(*) FROM ids_import.{ident(name)})' for name in INVENTORY_IMPORT_TABLES]
+            inventory = read_check('',json_sql(inventory_base)+f" || pg_catalog.jsonb_build_object('inventory',pg_catalog.jsonb_build_object('tables',(SELECT pg_catalog.count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('ids','ids_import') AND c.relkind='r'),'rows',{' + '.join(counts)},'own_run',EXISTS(SELECT 1 FROM ids_import.import_run WHERE import_run_id={rid})))")
+            if set(inventory)!=set(inventory_base)|{'inventory'} or any(inventory.get(k)!=v for k,v in inventory_base.items()): raise StopLoad('RECEIPT_INVALID')
+            state=inventory['inventory']
+            if state=={'tables':28,'rows':0,'own_run':False}:
+                receipt={'run':self.approval.run_id,'snapshot':self.approval.snapshot_hash,'reconciled':True,'mode':'first'}
+                self.journal.reconciled(self.approval,'first')
+                return receipt
+            if not isinstance(state,dict) or state.get('tables')!=28 or state.get('own_run') is not True: raise StopLoad('RECONCILIATION_REQUIRED')
+            # Resumption still verifies every existing record, lineage and checkpoint;
+            # an empty-database optimization never weakens unknown-outcome recovery.
+            compiled, chunks = self._compile(rows)
             ids = []
             # Same bounded groups as loading, but every request is READ ONLY.
             for _, _, group in compiled:
