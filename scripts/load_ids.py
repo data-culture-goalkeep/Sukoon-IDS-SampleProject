@@ -28,15 +28,14 @@ import uuid
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
-PROJECT = 'uzofrrrtwqjmtytrbqfr'
-SOURCE = '1ZNF0oGXt06kX5ezohN1HHO4--Z9fsiDVm-D7JXlEooc'
 MAX_ROWS = 100
 MAX_BYTES = 512_000
 ORDER = [24, 23, 4, 7, 8, 9, 10, 11, 1, 2, 3, 5, 6, 15, 14, 16, 12, 13, 21, 17, 18, 19, 20, 22]
 SPEC = json.loads((ROOT / 'docs/model-spec.json').read_text())
+PROJECT = SPEC['allowed_project_ref']
 AUDIT = json.loads((ROOT / 'docs/source-audit-v2.json').read_text())
 SOURCE_VERSION = AUDIT['version']
-assert SOURCE == AUDIT['source_file_id']
+SOURCE = AUDIT['source_file_id']
 REQUIRED_MIGRATIONS = tuple(AUDIT['required_migrations'])
 TABLES = {t['source_tab']: t for t in SPEC['tables']}
 TABS = {t['tab']: t for t in AUDIT['tabs']}
@@ -269,7 +268,8 @@ class Worker:
         return self._request(suffix,payload)
 
     def _request(self, suffix, payload=None):
-        if suffix not in ('', '/postgrest', '/database/query'): raise StopLoad('SCOPE_MISMATCH')
+        if suffix not in ('', '/postgrest', '/database/query','/advisors/security'): raise StopLoad('SCOPE_MISMATCH')
+        if suffix!='/database/query' and payload is not None: raise StopLoad('SCOPE_MISMATCH')
         data = None if payload is None else canonical(payload).encode()
         if data is not None and len(data) > MAX_BYTES: raise StopLoad('PAYLOAD_TOO_LARGE')
         req = urllib.request.Request('https://api.supabase.com/v1/projects/' + PROJECT + suffix,
@@ -342,7 +342,7 @@ class Worker:
 
     def preflight(self):
         p = self.request(''); c = self.request('/postgrest')
-        if p.get('id') != PROJECT or p.get('name') != 'Veruschka-IDS-SampleProject' or p.get('status') != 'ACTIVE_HEALTHY':
+        if p.get('id') != PROJECT or p.get('status') != 'ACTIVE_HEALTHY':
             raise StopLoad('PREFLIGHT_FAILED')
         if {'ids', 'ids_import'} & {x.strip() for x in c.get('db_schema', '').split(',')}:
             raise StopLoad('PREFLIGHT_FAILED')
@@ -386,7 +386,9 @@ class Journal:
     """
     def __init__(self, path):
         self.path = Path(path).resolve()
-        if not Path(path).is_absolute() or self.path.is_relative_to(ROOT):
+        private_work=ROOT/'work'
+        ignored_work='work/' in (ROOT/'.gitignore').read_text().splitlines()
+        if not Path(path).is_absolute() or (self.path.is_relative_to(ROOT) and not (ignored_work and self.path.is_relative_to(private_work.resolve()) and not private_work.is_symlink())):
             raise StopLoad('SCOPE_MISMATCH')
         try: self.run_id = str(uuid.UUID(self.path.stem))
         except ValueError: raise StopLoad('SCOPE_MISMATCH') from None

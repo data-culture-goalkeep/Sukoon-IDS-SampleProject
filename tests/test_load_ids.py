@@ -308,7 +308,7 @@ class LoadTests(unittest.TestCase):
             with self.assertRaisesRegex(L.StopLoad,'RUN_LOCKED'):loader.load(self.rows,self.rows)
         self.assertEqual(self.worker.preflights,0);self.assertFalse(self.worker.sql)
     def test_repository_state_path_is_rejected(self):
-        with self.assertRaisesRegex(L.StopLoad,'SCOPE_MISMATCH'):L.Journal(L.ROOT/'work'/(RUN+'.json'))
+        with self.assertRaisesRegex(L.StopLoad,'SCOPE_MISMATCH'):L.Journal(L.ROOT/(RUN+'.json'))
     def test_missing_parser_fails_instead_of_skipping(self):
         result=subprocess.run([sys.executable,'-I','-S',str(Path(__file__).resolve())],capture_output=True,text=True)
         self.assertNotEqual(result.returncode,0)

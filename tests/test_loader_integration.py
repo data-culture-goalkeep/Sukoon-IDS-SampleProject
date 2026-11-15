@@ -24,10 +24,11 @@ def run(args, data=None, check=True):
 class LocalWorker(L.Worker):
     def __init__(self, test):
         self.test=test;self.writes=0;self.queries=[];self.lose_response=False
-        self.started=None;self.release=None
+        self.started=None;self.release=None;self.read_retries=0
     def request(self, suffix, payload=None):
         if suffix=='':return {'id':L.PROJECT,'name':'Veruschka-IDS-SampleProject','status':'ACTIVE_HEALTHY'}
         if suffix=='/postgrest':return {'db_schema':'public,graphql_public'}
+        if suffix=='/advisors/security':return {'lints':[]}
         raise AssertionError('No remote or HTTP route is available in integration tests')
     def query(self, sql):
         readonly='READ ONLY' in sql or ' AS safe;' in sql
@@ -41,8 +42,16 @@ class LocalWorker(L.Worker):
             self.lose_response=False
             raise TimeoutError('synthetic response loss after real COMMIT')
         if ' AS safe;' in sql:return [{'safe':result.strip()=='t'}]
-        lines=[line for line in result.splitlines() if line.startswith('{')]
-        return [{'receipt':json.loads(lines[-1])}] if lines else []
+        lines=[]
+        for line in result.splitlines():
+            if line in ('t','f'):
+                lines.append(line=='t');continue
+            try:lines.append(json.loads(line))
+            except json.JSONDecodeError:pass
+        from pglast import parse_sql,ast
+        selects=[statement.stmt for statement in parse_sql(sql)if isinstance(statement.stmt,ast.SelectStmt)]
+        alias=selects[-1].targetList[0].name if selects else None
+        return [{alias or 'receipt':lines[-1]}]if lines else []
 
     def read_query(self,sql):return self.query(sql)
 
@@ -111,6 +120,71 @@ class PostgreSQLLoaderTests(unittest.TestCase):
         with self.assertRaisesRegex(L.StopLoad,'RECONCILIATION_REQUIRED'):
             self.loader(rows).reconcile(rows,copy.deepcopy(rows),authorized=True)
         self.assertEqual(self.worker.writes,0)
+
+    def test_public_runner_reconciles_committed_and_absent_attempts(self):
+        import ids_runner as R
+        from unittest.mock import patch
+        manifest=R.Manifest(ROOT/'docs/source-audit-v2.json')
+        rows=self.rows()
+        with patch.object(R,'WORK',Path(self.temp.name)/'work'):
+            run=R.Run(manifest,RUN,L.private_snapshot(rows),self.worker)
+            run.initial_reconcile()
+            chunk=rows
+            body,receipt=run.loader._chunk_sql(chunk)
+            expected={'run':RUN,'chunks':[receipt]}
+            with run.journal.exclusive():
+                run.journal.begin(run.approval,'synthetic_pending',expected)
+                # Nothing was written: accept only a read-only proof of absence.
+                outcome=run.reconcile_pending(accept=True)
+                self.assertEqual(outcome['outcome'],'not_committed')
+                self.assertEqual(self.worker.writes,0)
+                run.loader._send(L.transaction(run.loader._run_guard(create=True)+body,expected),expected)
+                run.journal.begin(run.approval,'synthetic_lost_response',expected)
+                outcome=run.reconcile_pending(accept=True)
+                self.assertEqual(outcome['outcome'],'committed')
+                self.assertEqual(self.worker.writes,1)
+                self.sql("UPDATE ids_import.source_row SET raw_values='[]'::jsonb;")
+                with self.assertRaises(L.StopLoad):run.reconcile_pending(accept=True)
+                self.assertEqual(self.worker.writes,1)
+
+    def test_public_runner_trial_and_row_clear_preserve_schema(self):
+        import ids_runner as R
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        policy=SimpleNamespace(digest='invented_manifest',value={'load_order':['4.Partner Organisation'],'trial_tabs':['4.Partner Organisation'],'batch_rows':100,'pause_seconds':0,'health_every_batches':1,'approved_warning_rows':{}},tabs={'4.Partner Organisation':dict(L.TABS['4.Partner Organisation'],records=2,last_data_row=4)})
+        with patch.object(R,'WORK',Path(self.temp.name)/'work'):
+            run=R.Run(policy,RUN,L.private_snapshot(self.rows()),self.worker)
+            run.initial_reconcile()
+            with run.journal.exclusive():
+                result=run.execute(trial=True,pause=0,health_every=1)
+            self.assertEqual(result['loaded'],2)
+            self.assertEqual(self.scalar('SELECT count(*) FROM ids.partner_organisation'),2)
+            manifest=R.Manifest(ROOT/'docs/source-audit-v2.json')
+            with R.operator_lock():report=R.clear_rows(manifest,self.worker,approve_delete=True)
+            self.assertEqual(report['rows'],0)
+            self.assertEqual(self.scalar('SELECT count(*) FROM ids.partner_organisation'),0)
+            self.assertEqual(self.scalar("SELECT count(*)FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN('ids','ids_import')AND c.relkind='r'AND c.relrowsecurity"),28)
+            self.assertFalse(run.journal.path.exists())
+
+    def test_public_runner_full_continuation_and_lost_finalize_response(self):
+        import ids_runner as R
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        policy=SimpleNamespace(digest='invented_manifest',value={'load_order':['4.Partner Organisation'],'trial_tabs':['4.Partner Organisation'],'batch_rows':100,'pause_seconds':0,'health_every_batches':1,'approved_warning_rows':{}},tabs={'4.Partner Organisation':dict(L.TABS['4.Partner Organisation'],records=2,last_data_row=4)})
+        with patch.object(R,'WORK',Path(self.temp.name)/'work'):
+            run=R.Run(policy,RUN,L.private_snapshot(self.rows()),self.worker)
+            run.initial_reconcile()
+            with run.journal.exclusive():
+                run.execute(trial=True,pause=0,health_every=1)
+                self.worker.lose_response=True
+                with self.assertRaises(TimeoutError):run.execute(trial=False,pause=0,health_every=1)
+                self.assertEqual(self.scalar('SELECT count(*)FROM ids.partner_organisation'),2)
+                writes=self.worker.writes
+                result=run.reconcile_pending(accept=True)
+                self.assertEqual(result['outcome'],'finalized')
+                self.assertEqual(self.worker.writes,writes)
+                self.assertEqual(run.journal.read()['state'],'ready')
+                self.assertEqual(R.verify_loaded(policy,self.worker,RUN)['loaded'],2)
 
     def test_goal_review_new_boundaries_preserve_lower_limits(self):
         sections={'SMART_GOALS':1,'FUNCTIONAL_LEARNING':0,'HOSPITALITY':0}
