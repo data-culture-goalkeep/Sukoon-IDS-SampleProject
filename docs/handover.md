@@ -100,7 +100,7 @@ approved warnings, without personal values:
    assessment_date is also the measurement date.
 3. Registration-number uniqueness; gender, APL/BPL and quarter permitted sets.
 4. Text-rating/numeric-rating mappings and rubric weight/score interpretation.
-   Source catalogue versions BASE-V1, FUNC-V1, CUL-V1, ICUL-V1, WEEK-V1, FINAL-V1
+   Source catalogue version identifiers were inspected without publishing row values.
    currently use maximum 5 and weight 1. No derived weighted grading is implemented.
 5. Gross fee/subsidy/net-due interpretation. There is no independent source net_due
    field; scheduled_net_due is a view over preserved instalment amounts.
@@ -840,3 +840,70 @@ and the actual checkpoint layout. This PR does not publish a general-purpose
 resume CLI or establish journal durability across environment replacement.
 Real-client scales, IQ/height/weight sensitivity and a parameterised transport
 with verified log controls remain open items.
+
+
+## 2026-11-15 — Repo-reproducible operational runners
+
+The previous private-orchestration limitation is superseded by
+[runbook.md](runbook.md) and `scripts/ids_runner.py`. The existing low-level
+`load_ids.py` command remains dry-run only; the new operational entry point
+provides capture, offline validation, explicit first-run initialization, trial,
+full load, read-only reconciliation/rebuild, paced 50-row resumption, verification
+and separately approved row clearing. Database writes require both --execute
+and a SHA-pinned versioned manifest; clearing additionally requires
+--approve-delete-rows. Trial/full use the same import run and preserve its
+immutable source approval. Existing checkpoint layouts are verified before
+being skipped; pending outcomes are proved read-only before journal reset.
+
+The workbook and allowed project ref are read from the manifest, checked against
+the independent model allowlist and SUPABASE_PROJECT_REF; the worker token is
+read only from SUPABASE_ACCESS_TOKEN. Optional source capture uses a separate
+Google read token. Network-domain and fresh-task binding requirements, exact
+commands and input JSON format are in the runbook. No hosted request, load, clear
+or migration was performed while extracting and testing this tooling.
+
+All working inputs and state now live under ignored work/. The durable journal
+is work/ids/<run-id>/<run-id>.json, with separate .started and .lock files;
+control, plan, progress, metrics and sanitized failure queue live beside it.
+Atomic/fsync state transitions and whole-run locking remain in force. Durability
+across environment replacement remains an open limitation; explicit read-only
+rebuild is required after loss/corruption. Old live journals, snapshots, extracts,
+credentials and operational reports are deliberately not committed. Remote
+failure-log publication remains an authenticated, explicit service step; only
+coordinates/reason codes may be copied from the private queue.
+
+The runbook audits every runtime runner/helper family and explains the historical
+unresponsive database, restart, expensive per-chunk reconciliation, SQL-text
+privacy exposure and real-client parameterised-route/log-control requirement.
+Private write logic was consolidated as code; one-off code-edit/doc-generation
+scripts and vendored dependencies were excluded. The applied migration and its
+recorded version were not changed. No merge is authorized.
+
+
+### Runner reproducibility and privacy evidence
+
+The full local suite passed 89 tests in 31.068 seconds; the separate PostgreSQL
+17.11 schema validator passed all three migrations, 186 documented FKs and five
+concurrency checks. New real-PostgreSQL tests cover the public runner's trial,
+row-only clear with definition preservation, absent/committed/tampered uncertain
+attempts, full continuation and lost-finalization response. Transport tests still
+prove no automatic write retry. No hosted requests were used for this work.
+
+A clean Git worktree of the candidate tree installed pglast 7.22 independently
+from the pinned requirements. The manifest-only dry run succeeded without
+credentials; it explicitly reported source_validated=false. The same entry point
+then validated/transformed all 90,319 approved rows and retained 860 warnings
+from two private independent captures under ignored work/, with zero network
+requests/database writes. All four write commands refused either missing
+--execute or missing --manifest before transport construction (exit 2,
+NOT_APPROVED). The checkout remained Git-clean and was removed afterward.
+
+The offline whole-diff audit compared all 104,790 distinct nonempty source cell
+values, credential patterns and exact runtime-secret values. No credentials,
+private source identifiers/contact/medical values, source-row payloads or
+unreviewed source phrases were found. Shared scalar/calendar examples, public
+words and approved schema/reference configuration are reported as overlaps, not
+misrepresented as zero exact matching values. An unnecessary historical list of
+literal rubric identifiers was removed. Work files, private snapshots, live
+journals/progress, lock files, source exports and vendored dependencies remain
+excluded. The actual scan reports/proof inputs remain private under work/.
