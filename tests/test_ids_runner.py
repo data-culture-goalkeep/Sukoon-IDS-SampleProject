@@ -70,7 +70,7 @@ class RunnerSafetyTests(unittest.TestCase):
         with patch.dict(os.environ,{},clear=True),patch.object(R.urllib.request,'build_opener')as opener:
             with self.assertRaises(L.StopLoad):R.capture(self.manifest,self.work/'capture.json')
             opener.assert_not_called()
-    def capture_fixture(self, timezone='Asia/Kolkata', sentinel=None):
+    def capture_fixture(self, timezone='Asia/Kolkata', sentinel=None, formatted=None):
         tab='4.Partner Organisation';headers=L.TABS[tab]['source_headers']
         rows=[fixture(tab,3),fixture(tab,4)]
         values=[[next(iter(v.values()),None)for v in r['raw']]for r in rows]
@@ -84,6 +84,8 @@ class RunnerSafetyTests(unittest.TestCase):
             else:
                 a1=R.urllib.parse.unquote(request.full_url.split('/values/',1)[1].split('?',1)[0])
                 if '!A5:' in a1:result={'values':sentinel or []}
+                elif 'valueRenderOption=FORMATTED_VALUE' in request.full_url:
+                    result={'values':formatted if formatted is not None else [headers]+[[None if v is None else str(v) for v in row] for row in values]}
                 else:result={'values':[headers]+values}
             return io.BytesIO(json.dumps(result).encode())
         return policy,SimpleNamespace(open=Mock(side_effect=open_response)),requests
@@ -115,8 +117,44 @@ class RunnerSafetyTests(unittest.TestCase):
             result=R.capture(policy,self.work/'capture.json')
         self.assertTrue(result['captured']);self.assertEqual(result['database_writes'],0)
         self.assertEqual(len(R.decode_snapshot(self.work/'capture.json',policy)),2)
-        self.assertEqual(len(requests),3)
+        self.assertEqual(len(requests),4)
         self.assertEqual(len(R.read_private(self.work/'capture.json')['batches']),1)
+
+    def test_capture_preserves_displayed_values_in_transformed_lineage(self):
+        tab='4.Partner Organisation';headers=L.TABS[tab]['source_headers']
+        displayed=[headers]+[['invented_display_'+str(i) for i in range(len(headers))] for _ in range(2)]
+        policy,opener,requests=self.capture_fixture(formatted=displayed)
+        with patch.dict(os.environ,{'GOOGLE_SHEETS_ACCESS_TOKEN':'invented_google_token'}),patch.object(R.urllib.request,'build_opener',return_value=opener):
+            R.capture(policy,self.work/'capture.json')
+        saved=R.read_private(self.work/'capture.json')['batches'][0]
+        self.assertEqual(saved['formatted_data'],displayed)
+        rows=R.decode_snapshot(self.work/'capture.json',policy)
+        self.assertEqual(list(rows[0]['formatted']),displayed[1])
+        self.assertEqual(list(rows[1]['formatted']),displayed[2])
+        self.assertNotEqual(rows[0]['raw'][0],rows[0]['formatted'][0])
+        self.assertEqual(rows[0]['record'],fixture(tab,3)['record'])
+        changed=R.read_private(self.work/'capture.json')
+        changed['batches'][0]['formatted_data'][1][0]='invented_other_display'
+        R.save(self.work/'changed-display.json',changed)
+        with self.assertRaisesRegex(L.StopLoad,'SOURCE_CHANGED'):
+            R.snapshots(self.work/'capture.json',self.work/'changed-display.json',policy)
+        self.assertEqual(requests[-2].split('?')[0],requests[-1].split('?')[0])
+        self.assertTrue(requests[-2].endswith('valueRenderOption=FORMULA'))
+        self.assertTrue(requests[-1].endswith('valueRenderOption=FORMATTED_VALUE'))
+        loader=L.Loader(approval(rows),FakeWorker(),lambda *args:True,L.Journal(self.work/(RUN+'.json')))
+        sql,_=loader._chunk_sql(list(rows))
+        self.assertIn('raw_formatted_values',sql)
+        self.assertIn('invented_display_0',sql)
+
+    def test_capture_refuses_mismatched_entered_displayed_dimensions(self):
+        headers=L.TABS['4.Partner Organisation']['source_headers']
+        for displayed in ([headers], [headers,[],[]], [headers,headers,headers+[None]]):
+            with self.subTest(shape=[len(row) for row in displayed]):
+                policy,opener,_=self.capture_fixture(formatted=displayed)
+                with patch.dict(os.environ,{'GOOGLE_SHEETS_ACCESS_TOKEN':'invented_google_token'}),patch.object(R.urllib.request,'build_opener',return_value=opener),patch.object(R,'save')as save,patch.object(R,'decode_snapshot')as decode:
+                    with self.assertRaisesRegex(R.CaptureRefusal,'read dimensions differ in tab 4.Partner Organisation'):
+                        R.capture(policy,self.work/'capture.json')
+                    save.assert_not_called();decode.assert_not_called()
 
     def test_capture_refusal_message_is_in_cli_output_without_source_values(self):
         with patch.object(R,'capture',side_effect=R.CaptureRefusal('Non-empty cell after last_data_row in tab invented_tab; capture refused.')),patch('sys.stdout',new=io.StringIO())as out:

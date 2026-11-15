@@ -907,3 +907,26 @@ misrepresented as zero exact matching values. An unnecessary historical list of
 literal rubric identifiers was removed. Work files, private snapshots, live
 journals/progress, lock files, source exports and vendored dependencies remain
 excluded. The actual scan reports/proof inputs remain private under work/.
+
+
+### 2026-11-15 — preserve displayed values in reproducible capture
+
+Approved data ranges now have paired FORMULA and FORMATTED_VALUE reads using
+identical A1 bounds. Exact row/column dimensions must agree before capture is
+saved; otherwise the runner refuses with the tab name. Private capture batches
+store entered data and formatted_data separately. Decoding merges each pair
+into userEnteredValue and formattedValue so transform() retains displayed
+values and the SQL adapter stores raw_formatted_values. Raw checksums and typed
+records still use entered values; independent snapshots compare both forms.
+Legacy snapshots lacking displayed arrays still produce null formatted lineage;
+the runner never synthesizes display text from entered values. Timezone,
+extra-row, project allowlist and worker pacing/backoff controls are retained.
+
+One read-only worker request to the allowed project sampled worksheet rows 3–7
+in each of Mobilisation Lead, Lead Follow-up and Mobilisation Activity. All 15
+had no non-null formatted-lineage elements. Only coordinates and yes/no results
+were returned; no source values were exposed. This sample confirms missing
+formatted values in those original-load rows, not the entire database. A fresh
+capture now preserves displayed values and will differ from that legacy lineage;
+changed-lineage/replay checks must not be bypassed. No existing lineage was
+modified, no reload/clear was performed, and no merge is authorized.

@@ -83,8 +83,14 @@ work/venv/bin/python scripts/ids_runner.py capture --manifest docs/source-audit-
 work/venv/bin/python scripts/ids_runner.py dry-run --manifest docs/source-audit-v2.json --snapshot work/source-pass1.json --repeat-snapshot work/source-pass2.json
 ```
 
-Capture performs read-only Google Sheets metadata and bounded FORMULA-value
-reads for the manifest ranges. Immediately after metadata is fetched, the
+Capture performs read-only Google Sheets metadata reads. Each approved data
+range is fetched twice with the identical A1 range: FORMULA for entered values
+and FORMATTED_VALUE for displayed values. Row counts and each row width must
+match exactly; a mismatch refuses capture before saving, naming the tab.
+Both arrays are stored privately as data and formatted_data, then paired cell
+by cell during decoding. Displayed values become formattedValue in transform()
+and raw_formatted_values in database lineage; they never replace entered values
+for type conversion or the approved raw-value checksum. Immediately after metadata is fetched, the
 workbook timezone must exactly equal manifest source_timezone (currently
 Asia/Kolkata); a missing timezone or alias such as Asia/Calcutta is refused.
 This happens before fetching source rows, saving a capture or decoding it.
@@ -117,13 +123,18 @@ save its independently read responses privately as JSON with this contract:
   "metadata": {"spreadsheetId": ..., "sheets": [{"properties": {
     "title": <exact tab>, "sheetId": <from live metadata>}} ...]},
   "batches": [{"tab": <exact tab>, "first": <worksheet row number>,
-               "data": [[<literal scalar cell values or null>, ...], ...]} ...]
+               "data": [[<entered scalar cell values or null>, ...], ...],
+               "formatted_data": [[<displayed cell values or null>, ...], ...]} ...]
 }
 ```
 
 Include headers at the manifest header row and all approved data rows, without
 overlapping batches. Metadata includes all data tabs and declared documentation
 tabs. The original operational `metadata`/`batches` JSON shape is accepted too.
+Legacy batches without formatted_data decode with null formatted lineage;
+displayed values are never invented from entered values. When present,
+formatted_data must have exactly the same dimensions as data. Independent
+passes must match both entered and formatted lineage.
 This is a format example, not source data. Never reconstruct the second pass by
 copying the first. The CLI always validates private input contents before writes.
 
@@ -322,3 +333,18 @@ at runtime. The source-value audit script compares every source cell value with
 the whole PR file set. It reports common scalar/calendar/public-word and approved
 schema/reference overlaps separately, and fails on private identifying values or
 unreviewed phrases; it never prints source values or credential matches.
+
+
+## 2026-11-15 — formatted-lineage compatibility
+
+A single read-only worker query sampled worksheet rows 3–7 in Mobilisation Lead,
+Lead Follow-up and Mobilisation Activity (15 lineage rows). None contained a
+non-null raw_formatted_values element. No source values were returned. This
+sample does not establish every row's state. Fresh paired captures preserve
+formatted values and therefore will not reproduce those legacy null arrays.
+Do not replay newly captured lineage against an existing import: changed-lineage
+checks remain in force. A fresh import requires its own approved run and the
+normal reconciliation gates; this change authorizes no reload or database edit.
+Worker pacing/backoff, no automatic write retries, timezone validation and the
+five-row FORMULA sentinel remain unchanged. Capture's Sheets reads fail closed;
+they do not acquire automatic write retries or mutate the workbook.

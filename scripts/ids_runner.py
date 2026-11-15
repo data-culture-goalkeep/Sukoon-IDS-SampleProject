@@ -114,11 +114,15 @@ def decode_snapshot(path, manifest):
     require(source == manifest.value['source_file_id'])
     props = {s['properties']['title']: s['properties'] for s in raw['metadata']['sheets']}
     require(set(props)==set(manifest.tabs)|set(manifest.value['documentation_tabs']), 'HEADER_CHANGED')
-    grid = {}
+    grid = {}; formatted_grid = {}
     for batch in raw['batches']:
         tab = batch['tab']
         if tab not in manifest.tabs:
             require(tab in manifest.value['documentation_tabs']);continue
+        if 'formatted_data' in batch:
+            require(matching_dimensions(batch['data'], batch['formatted_data']), 'SOURCE_CHANGED')
+            for row, displayed in enumerate(batch['formatted_data'], batch['first']):
+                formatted_grid.setdefault(tab, {})[row] = displayed
         for row, cells in enumerate(batch['data'], batch['first']):
             require(row not in grid.setdefault(tab, {}), 'ROW_INVALID')
             grid[tab][row] = cells
@@ -140,6 +144,10 @@ def decode_snapshot(path, manifest):
             cells = [{} if v in (None, '') else {'userEnteredValue':
                      {'boolValue': v} if type(v) is bool else {'numberValue': v}
                      if type(v) in (int, float) else {'stringValue': v}} for v in values]
+            if row in formatted_grid.get(tab, {}):
+                displayed = (formatted_grid[tab][row] + [None] * width)[:width]
+                for cell, formatted in zip(cells, displayed):
+                    cell['formattedValue'] = formatted
             result.append(L.transform(tab, row, cells, headers))
         digest = hashlib.sha256(L.canonical([tab, headers, canonical_rows]).encode()).hexdigest()
         require(digest == spec['raw_sha256'], 'SOURCE_CHANGED')
@@ -153,6 +161,13 @@ def snapshots(first, second, manifest):
     rows = decode_snapshot(first, manifest); repeated = decode_snapshot(second, manifest)
     require(L.sha(rows) == L.sha(repeated), 'SOURCE_CHANGED')
     return rows
+
+
+def matching_dimensions(entered, displayed):
+    return (isinstance(entered, list) and isinstance(displayed, list)
+            and len(entered) == len(displayed)
+            and all(isinstance(a, list) and isinstance(b, list) and len(a) == len(b)
+                    for a, b in zip(entered, displayed)))
 
 
 class CaptureRefusal(L.StopLoad):
@@ -201,7 +216,11 @@ def capture(manifest, output):
             last = min(first + 1999, spec['last_data_row'])
             a1 = "'" + tab.replace("'", "''") + f"'!A{first}:{column}{last}"
             values = get(base + '/values/' + urllib.parse.quote(a1, safe='') + '?valueRenderOption=FORMULA')
-            batches.append({'tab': tab, 'first': first, 'data': values.get('values', [])})
+            formatted = get(base + '/values/' + urllib.parse.quote(a1, safe='') + '?valueRenderOption=FORMATTED_VALUE')
+            entered = values.get('values', []); displayed = formatted.get('values', [])
+            if not matching_dimensions(entered, displayed):
+                raise CaptureRefusal('Entered/displayed read dimensions differ in tab ' + tab + '; capture refused.')
+            batches.append({'tab': tab, 'first': first, 'data': entered, 'formatted_data': displayed})
     save(output, {'source_file_id': source, 'metadata': metadata, 'batches': batches})
     decode_snapshot(output, manifest)  # Reject changed headers, rows and values now.
     return {'captured': True, 'tabs': len(manifest.tabs), 'database_writes': 0}
