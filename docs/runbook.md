@@ -84,10 +84,27 @@ work/venv/bin/python scripts/ids_runner.py dry-run --manifest docs/source-audit-
 ```
 
 Capture performs read-only Google Sheets metadata and bounded FORMULA-value
-reads for the manifest ranges. The two decoded snapshots must match each other
-and every manifest checksum. Formulas, changed headers/IDs, extra populated
-columns/rows, missing rows and changed values are refused. Boolean and numeric
-cell types are preserved; dates remain raw serials or approved month text.
+reads for the manifest ranges. Immediately after metadata is fetched, the
+workbook timezone must exactly equal manifest source_timezone (currently
+Asia/Kolkata); a missing timezone or alias such as Asia/Calcutta is refused.
+This happens before fetching source rows, saving a capture or decoding it.
+
+For every tab, capture also fetches rows last_data_row+1 through last_data_row+5,
+across all approved columns, using FORMULA rendering. Any non-empty sentinel
+cell, including zero, false, whitespace or a formula, refuses the entire capture
+with a message naming the tab. A failed/unavailable sentinel read also refuses
+capture; the runner never truncates that check or modifies the source grid.
+No capture is saved or decoded until all tab sentinel checks have passed.
+The five-row sentinel is a bounded check, not a scan of every later worksheet
+row. The decoder additionally rejects out-of-range populated rows present in
+an imported JSON export, but cannot detect rows omitted from that export.
+
+The two decoded snapshots must match each other and every manifest checksum.
+Captured source cells are checked for formulas, changed headers/IDs, missing
+rows and changed values. Imported JSON that includes additional populated
+columns or rows is refused. Capture does not scan outside the approved columns
+or beyond the five-row sentinel. Boolean and numeric cell types are preserved;
+dates remain raw serials or approved month text.
 Monthly Target YYYY-MM becomes YYYY-MM-01 only in the transformed record; the
 original text stays in raw lineage. Other date parsers are not broadened.
 

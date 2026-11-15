@@ -57,6 +57,60 @@ class RunnerSafetyTests(unittest.TestCase):
         with patch.dict(os.environ,{},clear=True),patch.object(R.urllib.request,'build_opener')as opener:
             with self.assertRaises(L.StopLoad):R.capture(self.manifest,self.work/'capture.json')
             opener.assert_not_called()
+    def capture_fixture(self, timezone='Asia/Kolkata', sentinel=None):
+        tab='4.Partner Organisation';headers=L.TABS[tab]['source_headers']
+        rows=[fixture(tab,3),fixture(tab,4)]
+        values=[[next(iter(v.values()),None)for v in r['raw']]for r in rows]
+        spec=dict(L.TABS[tab],records=2,last_data_row=4,raw_sha256=R.hashlib.sha256(L.canonical([tab,headers,[[i]+v for i,v in enumerate(values,3)]]).encode()).hexdigest())
+        policy=SimpleNamespace(value={'source_file_id':L.SOURCE,'source_timezone':'Asia/Kolkata','documentation_tabs':[]},tabs={tab:spec})
+        metadata={'spreadsheetId':L.SOURCE,'properties':{'timeZone':timezone},'sheets':[{'properties':{'title':tab,'sheetId':spec['sheet_id']}}]}
+        requests=[]
+        def open_response(request,timeout):
+            requests.append(request.full_url)
+            if '/values/' not in request.full_url:result=metadata
+            else:
+                a1=R.urllib.parse.unquote(request.full_url.split('/values/',1)[1].split('?',1)[0])
+                if '!A5:' in a1:result={'values':sentinel or []}
+                else:result={'values':[headers]+values}
+            return io.BytesIO(json.dumps(result).encode())
+        return policy,SimpleNamespace(open=Mock(side_effect=open_response)),requests
+
+    def test_capture_refuses_wrong_or_missing_timezone_before_save_or_decode(self):
+        for timezone in ('UTC','Asia/Calcutta',None):
+            with self.subTest(timezone=timezone):
+                policy,opener,requests=self.capture_fixture(timezone)
+                with patch.dict(os.environ,{'GOOGLE_SHEETS_ACCESS_TOKEN':'invented_google_token'}),patch.object(R.urllib.request,'build_opener',return_value=opener),patch.object(R,'save')as save,patch.object(R,'decode_snapshot')as decode:
+                    with self.assertRaisesRegex(R.CaptureRefusal,'timezone must equal manifest source_timezone'):
+                        R.capture(policy,self.work/'capture.json')
+                    save.assert_not_called();decode.assert_not_called()
+                self.assertEqual(len(requests),1)
+
+    def test_capture_refuses_populated_five_row_sentinel_and_names_tab(self):
+        for value in ('invented_extra',0,False,' ','=1'):
+            with self.subTest(value=value):
+                policy,opener,requests=self.capture_fixture(sentinel=[[],[],[],[],[None]*(len(L.TABS['4.Partner Organisation']['source_headers'])-1)+[value]])
+                with patch.dict(os.environ,{'GOOGLE_SHEETS_ACCESS_TOKEN':'invented_google_token'}),patch.object(R.urllib.request,'build_opener',return_value=opener),patch.object(R,'save')as save,patch.object(R,'decode_snapshot')as decode:
+                    with self.assertRaisesRegex(R.CaptureRefusal,'Non-empty cell after last_data_row in tab 4.Partner Organisation'):
+                        R.capture(policy,self.work/'capture.json')
+                    save.assert_not_called();decode.assert_not_called()
+                self.assertEqual(len(requests),2)
+                self.assertIn('!A5:',R.urllib.parse.unquote(requests[-1]));self.assertIn('9?valueRenderOption=FORMULA',requests[-1])
+
+    def test_capture_accepts_matching_timezone_and_blank_sentinel(self):
+        policy,opener,requests=self.capture_fixture(sentinel=[[],[None,''],[],[],[]])
+        with patch.dict(os.environ,{'GOOGLE_SHEETS_ACCESS_TOKEN':'invented_google_token'}),patch.object(R.urllib.request,'build_opener',return_value=opener):
+            result=R.capture(policy,self.work/'capture.json')
+        self.assertTrue(result['captured']);self.assertEqual(result['database_writes'],0)
+        self.assertEqual(len(R.decode_snapshot(self.work/'capture.json',policy)),2)
+        self.assertEqual(len(requests),3)
+        self.assertEqual(len(R.read_private(self.work/'capture.json')['batches']),1)
+
+    def test_capture_refusal_message_is_in_cli_output_without_source_values(self):
+        with patch.object(R,'capture',side_effect=R.CaptureRefusal('Non-empty cell after last_data_row in tab invented_tab; capture refused.')),patch('sys.stdout',new=io.StringIO())as out:
+            status=R.main(['capture','--manifest',self.manifest.path,'--output',str(self.work/'capture.json')])
+        result=json.loads(out.getvalue());self.assertEqual(status,2)
+        self.assertEqual(result['stopped'],'SOURCE_CHANGED');self.assertIn('invented_tab',result['message'])
+
     def run_fixture(self,worker=None):
         rows=[fixture('4.Partner Organisation',3),fixture('4.Partner Organisation',4)]
         return R.Run(self.manifest,RUN,L.private_snapshot(rows),worker or FakeWorker()),rows

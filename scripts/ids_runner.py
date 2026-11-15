@@ -155,6 +155,16 @@ def snapshots(first, second, manifest):
     return rows
 
 
+class CaptureRefusal(L.StopLoad):
+    """Safe capture diagnostics: fixed messages and approved manifest tab names."""
+    def __init__(self, message):
+        super().__init__('SOURCE_CHANGED')
+        self.public_message = message
+
+    def __str__(self):
+        return self.code + ': ' + self.public_message
+
+
 def capture(manifest, output):
     """Read Google Sheets only; Google token never goes to the Supabase worker."""
     token = os.environ.get('GOOGLE_SHEETS_ACCESS_TOKEN')
@@ -172,10 +182,21 @@ def capture(manifest, output):
         except Exception: raise L.StopLoad('PREFLIGHT_FAILED') from None
     metadata = get(base + '?fields=spreadsheetId,properties(timeZone),sheets(properties)')
     require(metadata['spreadsheetId'] == source)
+    if metadata.get('properties', {}).get('timeZone') != manifest.value['source_timezone']:
+        raise CaptureRefusal('Workbook timezone must equal manifest source_timezone (' + manifest.value['source_timezone'] + ').')
     batches = []
     for tab, spec in manifest.tabs.items():
         width = len(spec['source_headers']); column = ''; n = width
         while n: n, remainder = divmod(n - 1, 26); column = chr(65 + remainder) + column
+        sentinel_first = spec['last_data_row'] + 1
+        sentinel_last = spec['last_data_row'] + 5
+        sentinel = "'" + tab.replace("'", "''") + f"'!A{sentinel_first}:{column}{sentinel_last}"
+        try:
+            extra = get(base + '/values/' + urllib.parse.quote(sentinel, safe='') + '?valueRenderOption=FORMULA')
+        except L.StopLoad:
+            raise CaptureRefusal('Could not read the five-row sentinel for tab ' + tab + '; capture refused.') from None
+        if any(value not in (None, '') for row in extra.get('values', []) for value in row):
+            raise CaptureRefusal('Non-empty cell after last_data_row in tab ' + tab + '; capture refused.')
         for first in range(spec['header_row'], spec['last_data_row'] + 1, 2000):
             last = min(first + 1999, spec['last_data_row'])
             a1 = "'" + tab.replace("'", "''") + f"'!A{first}:{column}{last}"
@@ -562,6 +583,7 @@ def main(argv=None):
     except Exception as exc:
         code=exc.code if isinstance(exc,L.StopLoad)else 'SCOPE_MISMATCH'
         result={'stopped':code,'no_automatic_write_retry':True}
+        if isinstance(exc,CaptureRefusal):result['message']=exc.public_message
         if worker is not None:result.update(phase=worker.phase,last_response=worker.last_response)
         print(L.canonical(result));return 2
 
