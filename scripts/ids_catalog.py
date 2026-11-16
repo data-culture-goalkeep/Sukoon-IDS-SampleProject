@@ -4,4 +4,31 @@ CATALOG_SQL = "\nSELECT jsonb_build_object(\n 'relations',(select jsonb_agg(json
 
 MIGRATIONS_SQL = "SELECT coalesce(jsonb_agg(to_jsonb(m) order by version),'[]'::jsonb) AS migrations FROM supabase_migrations.schema_migrations m;"
 
-ACL_SQL = 'SELECT jsonb_build_object(\n \'rls\',(select jsonb_agg(jsonb_build_object(\'schema\',n.nspname,\'table\',c.relname,\'enabled\',c.relrowsecurity) order by n.nspname,c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in(\'ids\',\'ids_import\') and c.relkind in(\'r\',\'p\')),\n \'policies\',(select coalesce(jsonb_agg(to_jsonb(p) order by schemaname,tablename,policyname),\'[]\'::jsonb) from pg_policies p where schemaname in(\'ids\',\'ids_import\')),\n \'grants\',(select coalesce(jsonb_agg(x order by schema,object,grantee,privilege),\'[]\'::jsonb) from (\n  select n.nspname as schema,c.relname as object,a.grantee,a.privilege_type as privilege from pg_class c join pg_namespace n on n.oid=c.relnamespace cross join lateral aclexplode(coalesce(c.relacl,acldefault(case when c.relkind=\'S\' then \'S\'::"char" else \'r\'::"char" end,c.relowner)))a where n.nspname in(\'ids\',\'ids_import\') and c.relkind in(\'r\',\'p\',\'v\',\'m\',\'S\',\'f\') and (a.grantee=0 or a.grantee in(select oid from pg_roles where rolname in(\'anon\',\'authenticated\',\'service_role\')))\n  union all\n  select n.nspname,p.proname,a.grantee,a.privilege_type from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(coalesce(p.proacl,acldefault(\'f\',p.proowner)))a where n.nspname in(\'ids\',\'ids_import\') and (a.grantee=0 or a.grantee in(select oid from pg_roles where rolname in(\'anon\',\'authenticated\',\'service_role\')))\n )x)\n)AS access;'
+ACL_SQL = """SELECT jsonb_build_object(
+ 'rls',(select jsonb_agg(jsonb_build_object('schema',n.nspname,'table',c.relname,'enabled',c.relrowsecurity) order by n.nspname,c.relname) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in('ids','ids_import') and c.relkind in('r','p')),
+ 'policies',(select coalesce(jsonb_agg(to_jsonb(p) order by schemaname,tablename,policyname),'[]'::jsonb) from pg_policies p where schemaname in('ids','ids_import')),
+ 'schema_grants',(select coalesce(jsonb_agg(x order by schema,grantee,privilege),'[]'::jsonb) from (
+  select n.nspname as schema,a.grantee,
+   case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee)::text end as role,
+   a.privilege_type as privilege,a.is_grantable
+  from pg_namespace n
+  cross join lateral aclexplode(coalesce(n.nspacl,acldefault('n',n.nspowner)))a
+  where n.nspname in('ids','ids_import')
+   and (a.grantee=0 or a.grantee in(select oid from pg_roles where rolname in('anon','authenticated','service_role')))
+ )x),
+ 'default_grants',(select coalesce(jsonb_agg(x order by scope,owner,object_type,grantee,privilege),'[]'::jsonb) from (
+  select case when d.defaclnamespace=0 then '*' else n.nspname::text end as scope,
+   pg_get_userbyid(d.defaclrole)::text as owner,d.defaclobjtype as object_type,a.grantee,
+   case when a.grantee=0 then 'PUBLIC' else pg_get_userbyid(a.grantee)::text end as role,
+   a.privilege_type as privilege,a.is_grantable
+  from pg_default_acl d left join pg_namespace n on n.oid=d.defaclnamespace
+  cross join lateral aclexplode(d.defaclacl)a
+  where (n.nspname in('ids','ids_import') or (d.defaclnamespace=0 and d.defaclobjtype in('r','S','f','T')))
+   and (a.grantee=0 or a.grantee in(select oid from pg_roles where rolname in('anon','authenticated','service_role')))
+ )x),
+ 'grants',(select coalesce(jsonb_agg(x order by schema,object,grantee,privilege),'[]'::jsonb) from (
+  select n.nspname as schema,c.relname as object,a.grantee,a.privilege_type as privilege from pg_class c join pg_namespace n on n.oid=c.relnamespace cross join lateral aclexplode(coalesce(c.relacl,acldefault(case when c.relkind='S' then 'S'::"char" else 'r'::"char" end,c.relowner)))a where n.nspname in('ids','ids_import') and c.relkind in('r','p','v','m','S','f') and (a.grantee=0 or a.grantee in(select oid from pg_roles where rolname in('anon','authenticated','service_role')))
+  union all
+  select n.nspname,p.proname,a.grantee,a.privilege_type from pg_proc p join pg_namespace n on n.oid=p.pronamespace cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a where n.nspname in('ids','ids_import') and (a.grantee=0 or a.grantee in(select oid from pg_roles where rolname in('anon','authenticated','service_role')))
+ )x)
+)AS access;"""

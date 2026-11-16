@@ -238,6 +238,23 @@ levels. With a run UUID, it also requires a completed run and verifies all
 manifest tab counts/lineage, total checkpoint coverage and retained-warning
 counts. Use `verify --inventory-only --manifest docs/source-audit-v2.json` for
 security/count review of an intentionally partial run before an approved clear.
+
+As of 2026-11-16, the access query also rejects any schema-level privilege held
+by PUBLIC, anon, authenticated or service_role on ids or ids_import. It expands
+pg_namespace.nspacl, falling back to acldefault('n', nspowner) when NULL, so a
+NULL ACL does not bypass verification. The same forbidden roles are checked in
+pg_default_acl entries for both schemas and in global (namespace 0) defaults
+for tables/views, sequences, functions and types, regardless of the default's
+owner. Global defaults apply when objects are created in these schemas;
+per-schema revokes do not subtract global grants. Reports distinguish existing
+object grants, schema_grants and default_grants (scope '*' means global), with
+owner, role, privilege and grant-option evidence for defaults. Verification
+requires all three forbidden-grant lists to be empty. These checks run inside
+the existing read-only catalog transaction; no grants are automatically revoked.
+If a forbidden grant is found, stop, report the evidence and seek a separately
+approved remediation. Existing relation/function ACL, RLS, policy, view,
+Data API and advisor checks remain in force.
+
 The full load's per-tab report verifies considered=loaded+quarantined,
 lineage joins and exact manifest row counts; all checkpoints must be committed
 before run finalization. Capture the private result/metrics files for the audit.

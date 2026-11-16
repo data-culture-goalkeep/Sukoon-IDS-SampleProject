@@ -111,6 +111,84 @@ class PostgreSQLLoaderTests(unittest.TestCase):
                 cells=[{'userEnteredValue':{'stringValue':values[h.split(' (')[0]]}} if h.split(' (')[0] in values else {} for h in L.TABS[tab]['source_headers']]
                 result.append(L.transform(tab,n,cells,L.TABS[tab]['source_headers']))
         return result
+    def clean_security_defaults(self):
+        # Only this disposable test database: the compatibility fixture deliberately
+        # grants global defaults, which the extended verifier must now reject.
+        for kind in ('TABLES','SEQUENCES','FUNCTIONS','TYPES'):
+            self.sql('ALTER DEFAULT PRIVILEGES REVOKE ALL ON '+kind+' FROM PUBLIC, anon, authenticated, service_role;')
+
+    def test_security_clean_case_including_null_schema_acl_passes(self):
+        import ids_runner as R
+        self.clean_security_defaults()
+        # NULL ACL means PostgreSQL's owner-only schema defaults, not no ACL check.
+        self.sql("UPDATE pg_catalog.pg_namespace SET nspacl=NULL WHERE nspname='ids_import';")
+        report=R.verify_security(self.worker)
+        self.assertEqual(report['rls'],28)
+        self.assertEqual(report['policies'],0)
+        for key in ('forbidden_grants','forbidden_schema_grants','forbidden_default_grants'):
+            self.assertEqual(report[key],0)
+        self.assertEqual(report['catalog']['access']['schema_grants'],[])
+        self.assertEqual(report['catalog']['access']['default_grants'],[])
+        self.assertEqual(self.worker.writes,0)
+        acl_queries=[q for q in self.worker.queries if "'schema_grants'" in q]
+        self.assertEqual(len(acl_queries),1)
+        self.assertTrue(acl_queries[0].startswith('BEGIN READ ONLY;'))
+
+    def test_security_null_schema_acl_still_checks_owner_defaults(self):
+        import ids_runner as R
+        self.clean_security_defaults()
+        self.sql('ALTER SCHEMA ids OWNER TO anon;')
+        self.sql("UPDATE pg_catalog.pg_namespace SET nspacl=NULL WHERE nspname='ids';")
+        access=R.read_sql(self.worker,R.ACL_SQL,'access')
+        self.assertEqual({g['privilege'] for g in access['schema_grants'] if g['role']=='anon'},{'USAGE','CREATE'})
+        with self.assertRaisesRegex(L.StopLoad,'PREFLIGHT_FAILED'):
+            R.verify_security(self.worker)
+        self.assertEqual(self.worker.writes,0)
+
+    def test_security_schema_grant_to_each_forbidden_role_is_refused(self):
+        import ids_runner as R
+        self.clean_security_defaults()
+        for schema in ('ids','ids_import'):
+            for role in ('PUBLIC','anon','authenticated','service_role'):
+                with self.subTest(schema=schema,role=role):
+                    self.sql('GRANT USAGE ON SCHEMA '+schema+' TO '+role+';')
+                    access=R.read_sql(self.worker,R.ACL_SQL,'access')
+                    self.assertTrue(any(g['schema']==schema and g['role']==role and g['privilege']=='USAGE' for g in access['schema_grants']))
+                    with self.assertRaisesRegex(L.StopLoad,'PREFLIGHT_FAILED'):
+                        R.verify_security(self.worker)
+                    self.sql('REVOKE USAGE ON SCHEMA '+schema+' FROM '+role+';')
+        self.assertEqual(self.worker.writes,0)
+
+    def test_security_schema_default_grant_to_each_forbidden_role_is_refused(self):
+        import ids_runner as R
+        self.clean_security_defaults()
+        for schema in ('ids','ids_import'):
+            for role in ('PUBLIC','anon','authenticated','service_role'):
+                with self.subTest(schema=schema,role=role):
+                    prefix='ALTER DEFAULT PRIVILEGES IN SCHEMA '+schema
+                    self.sql(prefix+' GRANT SELECT ON TABLES TO '+role+';')
+                    access=R.read_sql(self.worker,R.ACL_SQL,'access')
+                    self.assertEqual(access['grants'],[])  # Future grants only.
+                    self.assertTrue(any(g['scope']==schema and g['role']==role and g['privilege']=='SELECT' for g in access['default_grants']))
+                    with self.assertRaisesRegex(L.StopLoad,'PREFLIGHT_FAILED'):
+                        R.verify_security(self.worker)
+                    self.sql(prefix+' REVOKE SELECT ON TABLES FROM '+role+';')
+        self.assertEqual(self.worker.writes,0)
+
+    def test_security_global_default_grants_are_not_hidden_by_schema_revokes(self):
+        import ids_runner as R
+        self.clean_security_defaults()
+        for role in ('PUBLIC','anon','authenticated','service_role'):
+            with self.subTest(role=role):
+                self.sql('ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES TO '+role+';')
+                self.sql('ALTER DEFAULT PRIVILEGES IN SCHEMA ids REVOKE SELECT ON TABLES FROM '+role+';')
+                access=R.read_sql(self.worker,R.ACL_SQL,'access')
+                self.assertTrue(any(g['scope']=='*' and g['role']==role and g['privilege']=='SELECT' for g in access['default_grants']))
+                with self.assertRaisesRegex(L.StopLoad,'PREFLIGHT_FAILED'):
+                    R.verify_security(self.worker)
+                self.sql('ALTER DEFAULT PRIVILEGES REVOKE SELECT ON TABLES FROM '+role+';')
+        self.assertEqual(self.worker.writes,0)
+
     def test_first_run_inventory_is_constant_and_rejects_foreign_rows(self):
         rows=self.rows();self.prepare(rows)
         reads=[q for q in self.worker.queries if 'READ ONLY' in q]
@@ -148,6 +226,7 @@ class PostgreSQLLoaderTests(unittest.TestCase):
                 self.assertEqual(self.worker.writes,1)
 
     def test_public_runner_trial_and_row_clear_preserve_schema(self):
+        self.clean_security_defaults()  # Clear requires the extended clean ACL preflight.
         import ids_runner as R
         from unittest.mock import patch
         from types import SimpleNamespace

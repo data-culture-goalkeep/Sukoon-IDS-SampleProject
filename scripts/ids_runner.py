@@ -271,14 +271,17 @@ def verify_security(worker):
     worker.preflight()
     snapshot = catalog(worker)
     access = snapshot['access']
-    require(len(access['rls']) == 28 and all(t['enabled'] for t in access['rls']) and not access['policies'] and not access['grants'], 'PREFLIGHT_FAILED')
+    require(len(access['rls']) == 28 and all(t['enabled'] for t in access['rls'])
+            and not access['policies'] and not access['grants']
+            and not access['schema_grants'] and not access['default_grants'], 'PREFLIGHT_FAILED')
     advisor = worker.request('/advisors/security')
     require(not any(v['level'] in ('WARN', 'ERROR') for v in advisor['lints']), 'PREFLIGHT_FAILED')
     views = ro(worker, "(SELECT jsonb_build_object('count',count(*),'invoker',bool_and(coalesce(c.reloptions,'{}')@>ARRAY['security_invoker=true']))FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='ids'AND c.relkind='v')")
     require(views == {'count': 2, 'invoker': True}, 'PREFLIGHT_FAILED')
     revoked = ro(worker, "NOT EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace CROSS JOIN LATERAL aclexplode(coalesce(p.proacl,acldefault('f',p.proowner)))a WHERE n.nspname='public'AND p.proname='rls_auto_enable'AND(a.grantee=0 OR a.grantee IN(SELECT oid FROM pg_roles WHERE rolname IN('anon','authenticated'))))")
     require(revoked, 'PREFLIGHT_FAILED')
-    return {'tables': table_counts(worker), 'rls': 28, 'policies': 0, 'forbidden_grants': 0,
+    return {'tables': table_counts(worker), 'rls': 28, 'policies': 0, 'forbidden_grants': 0, 'forbidden_schema_grants': 0,
+            'forbidden_default_grants': 0,
             'advisor_levels': {k: sum(v['level']==k for v in advisor['lints']) for k in ('INFO','WARN','ERROR')},
             'catalog': snapshot}
 

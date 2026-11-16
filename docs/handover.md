@@ -930,3 +930,36 @@ formatted values in those original-load rows, not the entire database. A fresh
 capture now preserves displayed values and will differ from that legacy lineage;
 changed-lineage/replay checks must not be bypassed. No existing lineage was
 modified, no reload/clear was performed, and no merge is authorized.
+
+
+### 2026-11-16 — schema and default-ACL verification
+
+Access verification now explicitly rejects privileges held by PUBLIC, anon,
+authenticated or service_role on either ids or ids_import schema, including
+PostgreSQL's owner defaults when pg_namespace.nspacl is NULL. It also checks
+pg_default_acl entries scoped to either schema and global defaults for
+schema-contained objects (tables/views, sequences, functions and types).
+Global entries are checked regardless of owner because schema-specific revokes
+do not cancel global grants. Findings include scope, role, default owner,
+object type, privilege and grant option; existing object ACL checks remain.
+The catalog query stays in a read-only transaction, and verify_security refuses
+any forbidden schema/default grant before proceeding to later verification.
+
+Disposable local PostgreSQL regressions cover grants to each forbidden role
+on each schema, schema-specific default grants, global defaults surviving a
+schema-specific revoke, a NULL schema ACL with forbidden-owner defaults, and
+a clean verification. The older row-clear integration fixture now explicitly
+removes its intentionally insecure global defaults locally before expecting
+clear's stronger preflight to pass. No hosted grants or data are changed by
+these tests or by verification.
+
+
+The extended read-only worker verification on 2026-11-16 passed for the allowed
+project: all 28 tables have RLS enabled; policies, forbidden existing-object
+grants, forbidden schema grants and forbidden relevant default-ACL grants were
+all zero. The security advisor returned 28 INFO, zero WARN and zero ERROR
+notices. The existing Data API exclusion, migration, fee-view and public helper
+EXECUTE checks also passed. There were 10 worker requests (three metadata/advisor
+GETs and seven read-only queries), with no retries, data changes or grant changes.
+The full suite passed 101 tests in 51.452 seconds. The live result and sanitized
+request metrics remain private under work/; no source values were retrieved.
