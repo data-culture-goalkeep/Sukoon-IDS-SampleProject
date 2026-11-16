@@ -10,7 +10,8 @@ from importlib.metadata import version
 import unittest
 from unittest.mock import patch
 import uuid
-from pglast import parse_sql, parse_plpgsql
+from pglast import parse_sql, parse_plpgsql, ast, enums
+from pglast.visitors import Visitor
 if version('pglast') != '7.22':
     raise RuntimeError('Tests require pglast==7.22; install requirements-loader-test.txt')
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
@@ -44,8 +45,10 @@ class FakeWorker:
         # Last SELECT contains the exact safely quoted JSON receipt.
         last=sql.rsplit('\nSELECT ',1)[1]
         receipt=json.loads(last.split("'::jsonb",1)[0][1:].replace("''", "'"))
+        if 'inventory_check' in receipt:receipt['inventory']={'tables':28,'rows':0,'own_run':False}
         if 'reconciled' in receipt:receipt['mode']='first'
         return [{'receipt':receipt}]
+    def read_query(self,sql):return self.query(sql)
 
 class LoadTests(unittest.TestCase):
     def setUp(self):
@@ -57,6 +60,23 @@ class LoadTests(unittest.TestCase):
         with self.journal.exclusive():return self.journal.read()
     def loader(self, a=None, worker=None):
         return L.Loader(a or approval(self.rows),worker or self.worker,lambda *x:(self.failures.append(x) or True),self.journal)
+    def test_month_text_conversion_preserves_raw_lineage(self):
+        original=fixture();headers=L.TABS['5.Monthly Target']['source_headers']
+        cells=[{'userEnteredValue':v} for v in original['raw']]
+        index=next(i for i,h in enumerate(headers) if h.split(' (')[0]=='month')
+        for month in ('2024-02','2026-12','2000-01'):
+            cells[index]={'userEnteredValue':{'stringValue':month}}
+            row=L.transform('5.Monthly Target',3,cells,headers)
+            self.assertEqual(row['record']['month'],month+'-01')
+            self.assertEqual(row['raw'][index],{'stringValue':month})
+        for month in ('2026-00','2026-13','2026-1','2026-01-01',' 2026-01','0000-01'):
+            cells[index]={'userEnteredValue':{'stringValue':month}}
+            with self.assertRaises(L.StopLoad):L.transform('5.Monthly Target',3,cells,headers)
+        for value in ({'stringValue':'2026-11','formulaValue':'=TODAY()'},
+                      {'stringValue':'2026-11','numberValue':1}, {}):
+            cells[index]={'userEnteredValue':value}
+            with self.assertRaises(L.StopLoad):L.transform('5.Monthly Target',3,cells,headers)
+
     def test_default_approval_denies(self):
         with self.assertRaisesRegex(L.StopLoad,'NOT_APPROVED'):self.loader(approval(self.rows,False)).load(self.rows,self.rows)
         self.assertFalse(self.worker.sql)
@@ -184,8 +204,8 @@ class LoadTests(unittest.TestCase):
         loader=L.Loader(approval(self.rows),FakeWorker('timeout'),lambda *x:False,self.journal)
         with self.assertRaisesRegex(L.StopLoad,'FAILURE_LOG_FAILED'):loader.load(self.rows,self.rows)
     def test_warning_manifest_counts(self):
-        self.assertEqual(len(L.AUDIT['approved_warning_rows']['weekly_check_first_held_rule']['rows']),61)
-        self.assertIn('mou_signed_missing_date',L.warnings_for('4.Partner Organisation',5))
+        self.assertEqual(len(L.AUDIT['approved_warning_rows']['weekly_check_first_held_rule']['rows']),471)
+        self.assertIn('non_delivered_with_actual_date',L.warnings_for('16.Batch Schedule',31))
     def test_missing_state_requires_explicit_readonly_reconciliation(self):
         self.journal.path.unlink()
         with self.assertRaisesRegex(L.StopLoad,'RECONCILIATION_REQUIRED'):self.loader().load(self.rows,self.rows)
@@ -194,10 +214,63 @@ class LoadTests(unittest.TestCase):
         with self.assertRaisesRegex(L.StopLoad,'NOT_APPROVED'):new.reconcile(self.rows,self.rows)
         new.reconcile(self.rows,self.rows,authorized=True)
         self.assertTrue(all('READ ONLY' in sql for sql in self.worker.sql))
+        self.assertEqual(len(self.worker.sql),1)
         for sql in self.worker.sql:
-            parse_sql(sql)
-            parse_plpgsql(sql[sql.index('DO '):sql.index('\nSELECT ',sql.index('DO '))])
+            statements=parse_sql(sql)
+            self.assertEqual(statements[0].stmt.kind,enums.TransactionStmtKind.TRANS_STMT_BEGIN)
+            self.assertTrue(any(o.defname=='transaction_read_only' and isinstance(o.arg,ast.A_Const) and o.arg.val.ival==1 for o in statements[0].stmt.options))
+            self.assertEqual(statements[-1].stmt.kind,enums.TransactionStmtKind.TRANS_STMT_COMMIT)
+            self.assertTrue(all(isinstance(x.stmt,(ast.SelectStmt,ast.VariableSetStmt)) for x in statements[1:-1]))
+            calls=[];relations=[]
+            class Inspect(Visitor):
+                def visit_FuncCall(self,ancestors,node):calls.append(tuple(x.sval for x in node.funcname))
+                def visit_RangeVar(self,ancestors,node):relations.append((node.schemaname,node.relname))
+                def visit_SelectStmt(self,ancestors,node):
+                    if node.intoClause or node.lockingClause:raise AssertionError('Side-effecting SELECT')
+            Inspect()(statements)
+            self.assertTrue(calls)
+            self.assertTrue(all(c in {('pg_catalog','count'),('pg_catalog','jsonb_build_object')} for c in calls))
+            actual={name for schema,name in relations if schema=='ids'}
+            expected={t['name'] for t in L.TABLES.values()}
+            self.assertEqual(len(expected),24)
+            self.assertEqual(set(L.TABLES),set(L.TABS))
+            self.assertEqual(actual,expected)
+            self.assertEqual(actual,set(L.INVENTORY_DATA_TABLES))
+            self.assertEqual({name for schema,name in relations if schema=='ids_import'},set(L.INVENTORY_IMPORT_TABLES))
+            self.assertNotIn('pg_advisory',sql)
+            self.assertNotIn('query_to_xml',sql)
         self.assertEqual(self.read_state()['mode'],'first')
+        self.worker.sql.clear()
+        new.load(self.rows,self.rows)
+        self.assertTrue(any('INSERT INTO ids.' in sql for sql in self.worker.sql))
+    def test_failed_inventory_cannot_unlock_writes(self):
+        self.journal.path.unlink()
+        worker=FakeWorker('bad_receipt');loader=self.loader(worker=worker)
+        with self.assertRaises(L.StopLoad):loader.reconcile(self.rows,self.rows,authorized=True)
+        self.assertFalse(self.journal.path.exists())
+        before=len(worker.sql)
+        with self.assertRaisesRegex(L.StopLoad,'RECONCILIATION_REQUIRED'):self.loader(worker=worker).load(self.rows,self.rows)
+        self.assertEqual(len(worker.sql),before)
+        self.assertTrue(all('READ ONLY' in sql for sql in worker.sql))
+
+    def test_reconcile_known_absence_preserves_evidence_and_refuses_partial(self):
+        a=approval(self.rows);loader=self.loader();chunk=self.rows
+        _,receipt=loader._chunk_sql(chunk)
+        with self.journal.exclusive():
+            self.journal.begin(a,'synthetic_attempt',{'run':a.run_id,'chunks':[receipt]})
+        evidence={'project':L.PROJECT,'run':a.run_id,'sheet':chunk[0]['sheet'],'first_row':chunk[0]['row'],'last_row':chunk[-1]['row'],'chunk':receipt['chunk'],'counts':{'checkpoint_rows':0,'lineage_rows':0},'metadata':{'http_status':201,'error':None},'database_writes':0}
+        partial=copy.deepcopy(evidence);partial['counts']['lineage_rows']=1
+        with self.assertRaises(L.StopLoad):loader.reconcile(self.rows,self.rows,authorized=True,absence_evidence=partial)
+        self.assertEqual(self.read_state()['state'],'in_flight')
+        wrong=copy.deepcopy(evidence);wrong['run']='different'
+        with self.assertRaises(L.StopLoad):loader.reconcile(self.rows,self.rows,authorized=True,absence_evidence=wrong)
+        result=loader.reconcile(self.rows,self.rows,authorized=True,absence_evidence=evidence)
+        self.assertEqual(result['outcome'],'not_committed')
+        state=self.read_state();self.assertEqual(state['state'],'ready');self.assertEqual(state['mode'],'resume')
+        self.assertEqual(state['reconciliation_evidence']['lineage_rows'],0)
+        self.assertEqual(state['reconciliation_evidence']['outcome'],'not_committed')
+        self.assertFalse(self.worker.sql)
+
     def test_total_state_loss_cannot_auto_initialize(self):
         self.journal.path.unlink();self.journal.marker.unlink()
         with self.assertRaisesRegex(L.StopLoad,'RECONCILIATION_REQUIRED'):self.loader().load(self.rows,self.rows)
@@ -235,7 +308,7 @@ class LoadTests(unittest.TestCase):
             with self.assertRaisesRegex(L.StopLoad,'RUN_LOCKED'):loader.load(self.rows,self.rows)
         self.assertEqual(self.worker.preflights,0);self.assertFalse(self.worker.sql)
     def test_repository_state_path_is_rejected(self):
-        with self.assertRaisesRegex(L.StopLoad,'SCOPE_MISMATCH'):L.Journal(L.ROOT/'work'/(RUN+'.json'))
+        with self.assertRaisesRegex(L.StopLoad,'SCOPE_MISMATCH'):L.Journal(L.ROOT/(RUN+'.json'))
     def test_missing_parser_fails_instead_of_skipping(self):
         result=subprocess.run([sys.executable,'-I','-S',str(Path(__file__).resolve())],capture_output=True,text=True)
         self.assertNotEqual(result.returncode,0)

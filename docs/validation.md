@@ -426,3 +426,297 @@ must follow explicit read-only reconciliation rather than blind replay.
 
 Documentation publication: two shell tool invocations for preparation/switch and
 commit/push, plus one GitHub PR-metadata update; elapsed time unmeasured.
+
+
+## 2026-11-14 — Regenerated synthetic v2: approved implementation
+
+Active workbook manifest: `source-audit-v2.json`, version
+`regenerated-synthetic-v2-20261114`, 90,319 records across 24 data tabs; Model
+Guide is documentation. Earlier source/count/load sections remain historical.
+The regenerated workbook populates Goal, Goal Review, Assessment Event and
+Criterion Score, expands Learner Session Log to 12,139 records, and adds 11
+Reference List options (165 total).
+
+The additive migration `20261114104958_align_goal_review_scales.sql` replaces
+only `ids.goal_review.goal_review_check`: SMART becomes 1–5; Functional Learning
+and Hospitality become 0–5. Lower limits, nullable scores and other sections
+are unchanged. The demo scale was widened to match this dataset; the real
+client scale is to be confirmed. Applied migrations are not edited.
+
+Monthly Target keeps its date column. Exact YYYY-MM source text becomes
+YYYY-MM-01 deterministically; original text remains in source-row raw lineage.
+All 471 weekly-check placement warnings, 61 non-delivered sessions with actual
+dates and 328 Holiday/Cancelled logs are retained, not quarantined. No extra
+reference options are inferred. IQ, height and weight remain as supplied; their
+necessity, meaning, units and access remain an open sensitivity question.
+
+This load uses synthetic data. Source values appear in SQL statement text and
+could reach database or request logs. Before real client data is loaded, use a
+parameterised route with database/request/parameter/error log controls verified.
+No transport change or server-log privacy guarantee is claimed here.
+
+Local validation after fixing the synthetic Reference List fixture: 56/56
+loader tests passed in 24.105 seconds, including real PostgreSQL 17.11 scale
+boundaries (both score fields, retained lower limits, 5 valid, 5.01/6 invalid),
+month conversion/raw lineage, atomic rollback, replay, concurrency and lost
+response recovery. `python scripts/validate_local.py` also passed: all three
+migrations, schema contract, RLS/grants, 186 FKs and five concurrency checks.
+Only invented fixtures were seeded into a disposable, network-isolated local
+container. Hosted migration/load/security verification is pending. Setup and
+separate schema-validator elapsed time were unmeasured; no credits inferred.
+
+2026-11-14 self-review: fixed one medium finding in the month conversion path:
+reject formula-bearing and multi-value cell payloads before conversion. No high
+or remaining medium findings in the changed SQL, access controls, scale bounds,
+loader quoting, source manifest or tracked-file review. Regression suite passed
+56/56 again in 25.760 seconds; no hosted writes were used for these tests.
+
+2026-11-14: standard worker migration endpoint recorded version `20261114104958`.
+Renamed `20261114102844_align_goal_review_scales.sql` with git mv to
+`20261114104958_align_goal_review_scales.sql`; SQL SHA-256 is byte-identical
+(`e5b4ede04173629a4b9167787152abc893404ca224e340aed86f5a501df5ae6e`).
+Updated active manifest required migration and documentation references.
+
+2026-11-14 hosted migration verification (worker route, allowed project only):
+all 28 tables exist and remain empty; RLS on 28/28, zero policies and zero
+table/view/sequence/function grants to PUBLIC, anon, authenticated or
+service_role. Only the intended goal-review CHECK changed; SMART lower bound
+1 and Functional/Hospitality lower bound 0 are preserved. Data API remains
+public,graphql_public. Advisor has zero WARN/ERROR and 28 expected INFO
+rls_enabled_no_policy findings. Migration preflight: 25.622 s, six worker
+requests; application/history: 5.717 s, two requests; post-migration checks:
+11.572 s, six requests.
+
+Fresh source preflight: 90,319/90,319 rows transformed, zero schema/rule
+violations and zero planned quarantines. All 24 tab hashes match the earlier
+independently read complete snapshot and active manifest. Evaluated 76 CHECKs
+and 300 source constraints; retain 471/61/328 approved warnings. Fresh read
+and private materialization: 139.309 s, one metadata and 64 range requests.
+Transformation/rule check: 12.754 s, no service requests. Failure-log precheck:
+one metadata and one cell-read request; all 25 source tabs empty with headers
+intact. Loader first-run reconciliation and loading remain pending.
+
+
+## 2026-11-15 — Regenerated synthetic load completed after reconciliation
+
+Project: `uzofrrrtwqjmtytrbqfr` only. Worker route throughout. Existing run
+`b0cda842-879f-4475-b5cb-20b4e6b47255`, source version
+`regenerated-synthetic-v2-20261114`, is now completed. No merge, commit or push
+was performed for this completion update. Earlier pending/stopped sections are
+dated history, superseded by these measured results.
+
+The original 100-row Criterion Score request for source rows 33803–33902
+returned HTTP 544 after 17.161 seconds. It was not blindly retried. After the
+user restarted the project, direct SQL Editor evidence supplied by the user
+showed 33,800 Criterion Score rows, 59,264 lineage rows and a 121 MB database.
+A single indexed, read-only worker request then confirmed zero matching
+checkpoints and zero lineage rows for that chunk (HTTP 201, 1.769 s overall).
+The loader's explicit reconciliation API recorded the not-committed outcome
+and evidence in its durable journal, then cleared in_flight using fsync/atomic
+state transitions. No journal files were edited by hand.
+
+The remaining 31,055 rows were loaded from worksheet row 33803 in 622
+transactions of at most 50 rows, with a 10-second pause between batches. The
+last batch had five rows. All 31 SELECT 1 health checks after each 20 batches
+passed, each with a requested 30-second statement timeout. No further failures,
+write retries, changed records or quarantines occurred. Existing checkpoints
+were preserved; the completed run has 1,228 committed checkpoints, including
+960 for Criterion Score. The largest historical checkpoint remains 100 rows.
+
+The record-verification predicate retains every original null-safe field
+comparison and additionally uses primary-key equality to enable an indexed
+lookup. The evidence-based reconciliation path and existing safety checks
+passed 68 local tests in 27.008 seconds before hosted resumption. The exclusive
+local run lock was held through resumption; each write retained atomic business,
+lineage and checkpoint changes. Local state is ready/resume with the evidence
+preserved. Environment-replacement durability is not guaranteed: lost or
+untrusted state still requires explicit read-only reconciliation.
+
+### Final reconciliation
+
+| Source tab | Considered | Loaded | Quarantined | Recorded tab seconds |
+|---|---:|---:|---:|---:|
+| 23.Staff | 20 | 20 | 0 | 4.910 |
+| 24.Reference List | 165 | 165 | 0 | 4.910 |
+| 4.Partner Organisation | 12 | 12 | 0 | 4.263 |
+| 7.Learner Profile | 215 | 215 | 0 | 11.573 |
+| 8.Family Contact | 286 | 286 | 0 | 10.527 |
+| 9.Learner Sensitive Details | 215 | 215 | 0 | 10.805 |
+| 10.Batch | 20 | 20 | 0 | 4.116 |
+| 11.Enrolment | 220 | 220 | 0 | 10.594 |
+| 1.Mobilisation Lead | 280 | 280 | 0 | 10.839 |
+| 2.Lead Follow-up | 560 | 560 | 0 | 22.051 |
+| 3.Mobilisation Activity | 810 | 810 | 0 | 33.075 |
+| 5.Monthly Target | 162 | 162 | 0 | 7.132 |
+| 6.Report & Meeting Log | 216 | 216 | 0 | 11.030 |
+| 15.Standard Topic | 50 | 50 | 0 | 3.971 |
+| 14.Master Programme Schedule | 120 | 120 | 0 | 7.570 |
+| 16.Batch Schedule | 1,320 | 1,320 | 0 | 49.472 |
+| 12.Fee Instalment | 660 | 660 | 0 | 20.559 |
+| 13.Fee Payment | 597 | 597 | 0 | 20.488 |
+| 21.Criterion Catalogue | 210 | 210 | 0 | 10.327 |
+| 17.Learner Session Log | 12,139 | 12,139 | 0 | 397.868 |
+| 18.Goal | 879 | 879 | 0 | 31.251 |
+| 19.Goal Review | 4,455 | 4,455 | 0 | 189.323 |
+| 20.Assessment Event | 1,853 | 1,853 | 0 | 92.404 |
+| 22.Criterion Score | 64,855 | 64,855 | 0 | 7802.475 |
+| **Total** | **90,319** | **90,319** | **0** | |
+
+Reference List and Staff share the same bootstrap transaction/verification time;
+do not sum that duration twice. Criterion Score time is the successful resume
+only (including pauses, health checks and tab reconciliation), not its earlier
+partial attempt. All 24 tab counts match their business tables. The full-tab
+Criterion Score reconciliation is 64,855 = 64,855 loaded + 0 quarantined; the
+whole workbook is 90,319 = 90,319 + 0. All 90,319 rows have lineage. Model Guide
+is documentation, not a data table.
+
+### Final verification
+
+- All 28 tables exist: 24 business and four import tables. RLS is enabled on
+  all 28; zero policies.
+- Zero grants to PUBLIC, anon, authenticated or service_role on private-schema
+  tables, views, sequences and functions. Definitions, ACLs and migration
+  history match the post-migration baseline; migration version 20261114104958
+  remains recorded. No load-stage schema or access changes were made.
+- Both fee views remain security_invoker=true. EXECUTE on
+  public.rls_auto_enable() remains revoked from PUBLIC, anon and authenticated.
+- Data API exposes public,graphql_public, excluding ids and ids_import.
+- Security advisor: zero WARN/ERROR, 28 expected INFO rls_enabled_no_policy
+  findings for the approved private closed-access model.
+- Import tables: one completed run, 1,228 committed chunks, 90,319 source rows,
+  and 860 retained warning issues. Zero error issues or other dispositions.
+- Warning records are exactly the approved 471 weekly-check placements, 61
+  non-delivered sessions with actual dates, and 328 Holiday/Cancelled logs.
+- All 162 Monthly Target conversions preserve the original YYYY-MM text in
+  raw lineage and store YYYY-MM-01. IQ, height and weight were loaded as
+  supplied; real-client necessity, units, meaning and access remain open.
+- Failure log: all 25 source-named tabs and headers checked. Zero active
+  failures, matching zero quarantines. One historical timeout entry remains
+  on Criterion Score and is explicitly marked RESOLVED_NOT_COMMITTED; those
+  source rows subsequently loaded in successful 50-row batches. No sensitive
+  values were placed in chat, the failure log or tracked files.
+
+### Timings and service-request counts
+
+| Stage | Seconds | Requests |
+|---|---:|---|
+| Historical migration preflight | 25.622 | 6 worker reads |
+| Migration application/history | 5.717 | 1 migration POST + 1 history read |
+| Historical post-migration checks | 11.572 | 6 worker reads |
+| Initial first-run reconciliation | 36.060 | 4 worker reads |
+| Earlier partial load to HTTP 544 | 2807.334 | 605 data-transaction attempts + 25 reads |
+| Successful light absence check after restart | 1.769 | 1 worker read |
+| Local preparation and evidence-based journal reconciliation | 41.933 | 3 worker preflight reads |
+| Legacy checkpoint-manifest preflight | Unmeasured separately | 1 worker read |
+| Successful resume, health checks, tab/workbook reconciliation and finalization | 7807.738 | 623 write transactions + 33 reads = 656 worker requests |
+| Final database/security verification | 13.927 | 7 worker reads |
+| Final failure-log check/resolution | Unmeasured | 1 metadata read + 2 cell reads + 1 update = 4 Sheets requests |
+| Project restart and earlier diagnosis | Unmeasured overall | Dashboard/whole-diagnosis request counts unmeasured |
+
+The 623 successful resume-stage write transactions comprise 622 50-row-or-less
+data transactions and one run finalization. The 33 reads comprise 31 health
+checks, one full-tab reconciliation and one whole-workbook reconciliation.
+Health requests took 52.604 seconds in total, already included in
+the resume duration. The requested 621 inter-batch pauses total 6,210 seconds
+and are also included. These durations cover different scopes and are not an
+end-to-end total. Tool invocations were not comprehensively instrumented and
+are unmeasured separately from service requests. No credits were measured or
+inferred. The user-performed restart timing and all earlier diagnosis timing
+are unmeasured overall; individual prior worker timeouts were approximately
+90 seconds each.
+
+This remains synthetic data. Source values appear in SQL statement text and
+could reach database or request logs. Real client data still requires a
+parameterised route with database/request/parameter/error log controls verified
+first. The widened demo score scale follows this dataset; the real-client
+scale remains to be confirmed.
+
+
+### 2026-11-15 — Publication approval and pre-push checks
+
+After the completed load was recorded locally, the user authorized committing
+and pushing the loader fixes, tests and documentation to PR #5; merging remains
+unauthorized. Pre-push validation passed 68/68 loader tests in 26.749 seconds
+and the separate PostgreSQL 17.11 schema validator, including all three
+migrations, 186 documented foreign keys and five concurrency checks.
+
+The staged-file review and credential/source-identifier scans found no source
+row contents, credentials, tokens, private snapshots or ignored working files.
+Approved reference options and aggregate audit metadata are intentional PR
+contents. The scale-migration filename already matches recorded version
+20261114104958 and its SQL remains byte-identical to the applied migration.
+
+Private operational runners and snapshots are deliberately excluded from Git.
+The published loader CLI remains dry-run only; reproducing an adaptive 50-row
+resume requires reviewed orchestration with explicitly approved private inputs
+and the actual checkpoint layout. This PR does not publish a general-purpose
+resume CLI or establish journal durability across environment replacement.
+Real-client scales, IQ/height/weight sensitivity and a parameterised transport
+with verified log controls remain open items.
+
+
+## 2026-11-15 — Repo-reproducible operational runners
+
+The previous private-orchestration limitation is superseded by
+[runbook.md](runbook.md) and `scripts/ids_runner.py`. The existing low-level
+`load_ids.py` command remains dry-run only; the new operational entry point
+provides capture, offline validation, explicit first-run initialization, trial,
+full load, read-only reconciliation/rebuild, paced 50-row resumption, verification
+and separately approved row clearing. Database writes require both --execute
+and a SHA-pinned versioned manifest; clearing additionally requires
+--approve-delete-rows. Trial/full use the same import run and preserve its
+immutable source approval. Existing checkpoint layouts are verified before
+being skipped; pending outcomes are proved read-only before journal reset.
+
+The workbook and allowed project ref are read from the manifest, checked against
+the independent model allowlist and SUPABASE_PROJECT_REF; the worker token is
+read only from SUPABASE_ACCESS_TOKEN. Optional source capture uses a separate
+Google read token. Network-domain and fresh-task binding requirements, exact
+commands and input JSON format are in the runbook. No hosted request, load, clear
+or migration was performed while extracting and testing this tooling.
+
+All working inputs and state now live under ignored work/. The durable journal
+is work/ids/<run-id>/<run-id>.json, with separate .started and .lock files;
+control, plan, progress, metrics and sanitized failure queue live beside it.
+Atomic/fsync state transitions and whole-run locking remain in force. Durability
+across environment replacement remains an open limitation; explicit read-only
+rebuild is required after loss/corruption. Old live journals, snapshots, extracts,
+credentials and operational reports are deliberately not committed. Remote
+failure-log publication remains an authenticated, explicit service step; only
+coordinates/reason codes may be copied from the private queue.
+
+The runbook audits every runtime runner/helper family and explains the historical
+unresponsive database, restart, expensive per-chunk reconciliation, SQL-text
+privacy exposure and real-client parameterised-route/log-control requirement.
+Private write logic was consolidated as code; one-off code-edit/doc-generation
+scripts and vendored dependencies were excluded. The applied migration and its
+recorded version were not changed. No merge is authorized.
+
+
+### Runner reproducibility and privacy evidence
+
+The full local suite passed 89 tests in 31.068 seconds; the separate PostgreSQL
+17.11 schema validator passed all three migrations, 186 documented FKs and five
+concurrency checks. New real-PostgreSQL tests cover the public runner's trial,
+row-only clear with definition preservation, absent/committed/tampered uncertain
+attempts, full continuation and lost-finalization response. Transport tests still
+prove no automatic write retry. No hosted requests were used for this work.
+
+A clean Git worktree of the candidate tree installed pglast 7.22 independently
+from the pinned requirements. The manifest-only dry run succeeded without
+credentials; it explicitly reported source_validated=false. The same entry point
+then validated/transformed all 90,319 approved rows and retained 860 warnings
+from two private independent captures under ignored work/, with zero network
+requests/database writes. All four write commands refused either missing
+--execute or missing --manifest before transport construction (exit 2,
+NOT_APPROVED). The checkout remained Git-clean and was removed afterward.
+
+The offline whole-diff audit compared all 104,790 distinct nonempty source cell
+values, credential patterns and exact runtime-secret values. No credentials,
+private source identifiers/contact/medical values, source-row payloads or
+unreviewed source phrases were found. Shared scalar/calendar examples, public
+words and approved schema/reference configuration are reported as overlaps, not
+misrepresented as zero exact matching values. An unnecessary historical list of
+literal rubric identifiers was removed. Work files, private snapshots, live
+journals/progress, lock files, source exports and vendored dependencies remain
+excluded. The actual scan reports/proof inputs remain private under work/.

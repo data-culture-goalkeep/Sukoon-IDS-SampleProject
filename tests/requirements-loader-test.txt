@@ -1,1 +1,1 @@
-pglast==7.22
+-r ../requirements-ids-runner.txt
