@@ -1,4 +1,6 @@
-# Veruschka IDS handover
+# Sukoon IDS handover
+
+Project renamed from its earlier working name to Sukoon on 16 November 2026; the Supabase project ref is unchanged.
 
 ## Manager summary — 16 November 2026
 
@@ -20,7 +22,7 @@ before loading continued. No database changes were made during this handover.
 
 The next PM decisions are whether to reload to populate displayed-value lineage,
 how to scope a Phase 2 dashboard and its deliberate API access, and whether the
-Veruschka name may be used in BD conversations. The original load omitted
+Sukoon name may be used in BD conversations. The original load omitted
 displayed values in a verified 15-row sample; the repo runner now captures them,
 so a fresh rerun will differ from that existing lineage. Reloading is optional
 and left to the PM. Before any real client data, resolve the privacy, durability,
@@ -32,8 +34,8 @@ values.
 
 | Item | Location |
 |---|---|
-| Database | [Veruschka-IDS-SampleProject](https://supabase.com/dashboard/project/uzofrrrtwqjmtytrbqfr), the only allowed project |
-| Code and review | [GitHub repository](https://github.com/data-culture-goalkeep/Veruschka-IDS-SampleProject), [PR #5](https://github.com/data-culture-goalkeep/Veruschka-IDS-SampleProject/pull/5) |
+| Database | [Sukoon-IDS-SampleProject](https://supabase.com/dashboard/project/uzofrrrtwqjmtytrbqfr), the only allowed project |
+| Code and review | [GitHub repository](https://github.com/data-culture-goalkeep/Sukoon-IDS-SampleProject), [PR #5](https://github.com/data-culture-goalkeep/Sukoon-IDS-SampleProject/pull/5) |
 | Source | [Synthetic workbook](https://docs.google.com/spreadsheets/d/1ZNF0oGXt06kX5ezohN1HHO4--Z9fsiDVm-D7JXlEooc/edit); approved inventory: [source-audit-v2.json](source-audit-v2.json) |
 | Failure log | [Load failure log Sheet](https://docs.google.com/spreadsheets/d/1b5DlvqHjyjcdWc0El0TBgDo-zNR5dOHy82YmRic4tFg/edit) |
 | Data model | [Diagram](er-diagram.mmd), [model guide](model.md), [fields](fields.md), [machine-readable specification](model-spec.json) |
@@ -102,7 +104,7 @@ Before any real client data:
 
 Showcase next step: a Phase 2 front-end dashboard with deliberate API access.
 Keep private schemas closed until that access is designed and approved. Check
-permission to use the Veruschka name in business-development conversations.
+permission to use the Sukoon name in business-development conversations.
 
 PR #5 was merged on 16 November 2026. The remaining human steps are to
 delete/revoke Supabase access tokens and review the sample for sensitive-looking
@@ -175,9 +177,9 @@ connectors were available. The worker had both required variable names and its
 project ref matched the allowlist. A read-only query via api.supabase.com returned
 connectivity_ok=1 on the allowed project. Secret values were not printed.
 
-The target was Veruschka-IDS-SampleProject, ACTIVE_HEALTHY, PostgreSQL 17.
+The target was Sukoon-IDS-SampleProject, ACTIVE_HEALTHY, PostgreSQL 17.
 Direct remote Postgres/TCP was not tested; no TCP allowance was configured.
-The Drive connector could retrieve Veruschka_ILS_Data_Model_v3.drawio.
+The Drive connector could retrieve Sukoon_ILS_Data_Model_v3.drawio.
 No hosted, source or repository changes were made at this stage.
 
 ## 2026-11-13 — Stage 2 source inspection history
@@ -507,7 +509,7 @@ container was removed. Hosted API behavior/log controls remain unverified.
 ## 2026-11-13 — Trial/full load paused at first-run progress-state gate
 
 The user authorized the synthetic-data trial and full load only on
-Veruschka-IDS-SampleProject (`uzofrrrtwqjmtytrbqfr`), through the worker route
+Sukoon-IDS-SampleProject (`uzofrrrtwqjmtytrbqfr`), through the worker route
 using PR #2 commit `097b1f00bf68a97faebd02ffcb9666d34fbf8229`. They required an
 immediate stop on failed, uncertain or unexpected results and explicit approval
 after read-only reconciliation of missing/untrusted progress state.
@@ -630,7 +632,7 @@ inferred from these calls.
 
 Recorded 2026-11-14 13:38:22 IST. The user explicitly approved resuming the reconciled first-run
 state and continuing directly from a successful database trial into the full load.
-Only Veruschka-IDS-SampleProject (`uzofrrrtwqjmtytrbqfr`) was accessed, on the
+Only Sukoon-IDS-SampleProject (`uzofrrrtwqjmtytrbqfr`) was accessed, on the
 worker route, using the unchanged loader at PR #2 commit
 `097b1f00bf68a97faebd02ffcb9666d34fbf8229`. No merge, seed, Auth-account creation,
 source-sheet edit, schema/access change or transport change was performed.

@@ -18,7 +18,7 @@ def main():
     # Avoid inherited selectors or remote credentials redirecting the validator.
     env = {k: v for k, v in os.environ.items()
            if not k.startswith(('SUPABASE_', 'PG', 'DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS', 'DOCKER_CERT_PATH'))}
-    name = 'veruschka-local-' + uuid.uuid4().hex[:12]
+    name = 'sukoon-local-' + uuid.uuid4().hex[:12]
 
     def run(args, text=None, check=True):
         p = subprocess.run(args, input=text, text=True, capture_output=True, env=env)

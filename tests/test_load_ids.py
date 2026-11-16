@@ -187,7 +187,7 @@ class LoadTests(unittest.TestCase):
         for schemas,catalog in [('public,ids',[{'safe':True}]),('public',[{'safe':False}])]:
             with patch.dict(os.environ,{'SUPABASE_PROJECT_REF':L.PROJECT,'SUPABASE_ACCESS_TOKEN':'synthetic'}):
                 worker=L.Worker(L.PROJECT)
-            project={'id':L.PROJECT,'name':'Veruschka-IDS-SampleProject','status':'ACTIVE_HEALTHY'}
+            project={'id':L.PROJECT,'name':'Sukoon-IDS-SampleProject','status':'ACTIVE_HEALTHY'}
             with patch.object(worker,'request',side_effect=[project,{'db_schema':schemas},catalog]):
                 with self.assertRaisesRegex(L.StopLoad,'PREFLIGHT_FAILED'):worker.preflight()
     def test_full_bootstrap_order(self):

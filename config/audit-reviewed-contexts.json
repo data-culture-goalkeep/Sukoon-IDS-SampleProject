@@ -18290,6 +18290,96 @@
       "classification": "coincidental"
     },
     {
+      "file": "scripts/validate_local.py",
+      "context_digest": "doojmdolhogdakgpebimmfcejdggfpcmnegbjcebinnebonbcdhieahlckohejhn",
+      "value_digest": "djpkjombjaooohlgpenppbbaangdedobajbinaeemhfokmipjojkcfjgbhdpiamj",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "adblekpfbjhomdakjcgpeimpeaobbkhnlmehaaeikcboeaadlhkdmahmfnklblkk",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "baimjjfljfdmikdffgbbadocabempiciolgfekjjodbapihpkljemcpelhnckaep",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "cjnlamghicnlnfaaaffjopenjojfdodaaoclehjooncgniihopdpjcljcbmagkgh",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "dknkjcpcilemonkdifgcolpaehmgppafeaanemfhcdfckbbecoonpopghncboggc",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "dobojghojlhjdojaipiokoidmhenlkjlmmmmogkffdflelegclnjjjefdhlpobfm",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "ebmpmanbpcnbchlaeffflhcegnieabjlenchhbakdpdkppgohhgedhflboagoafn",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "hgiilgopfcfffjgcnaaipppijeccdficmeiefbhmokhnkejooghiaaknmhpmiigg",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "iblikadpjhoihihmfdpobkiglnkaeclgpanojlaomjmajdfhobahmjjlkengjeik",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "imbpbaegcbjnnncbgkacdphjcdfgnnpbchpmodhckhcomjlemnkmjijooflaleff",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "lejeemgppainmgpednkcojmiceggjlhnjchnnbpkjhgpknmhlefgiibpfblpfmmm",
+      "classification": "coincidental"
+    },
+    {
+      "file": "scripts/validate_local.py",
+      "context_digest": "hmciadpcofdjjmpjjofaaminlbecnpgeopbadeegniolecejdhbneejdkpfopdjg",
+      "value_digest": "odngmenefjjoaaiicdiemkjiboocihonjgbpkfpdiciocknlfojokijaklanafcf",
+      "classification": "coincidental"
+    },
+    {
+      "file": "supabase/config.toml",
+      "context_digest": "fbdagekecmbbibginohjlmeigohiflfpggbgglbaofboidpiaaglcehdfdnchlel",
+      "value_digest": "cpmkdegnlgfgbihbacmoiagkmhdcoagkgcnpanllcicjofbbkhhaffgndjiobkgo",
+      "classification": "coincidental"
+    },
+    {
+      "file": "supabase/config.toml",
+      "context_digest": "ladhdjgnlejbgegbbhcffikkckhebompkdlgeclfekidijgkmjejliofnahiilkj",
+      "value_digest": "cpmkdegnlgfgbihbacmoiagkmhdcoagkgcnpanllcicjofbbkhhaffgndjiobkgo",
+      "classification": "coincidental"
+    },
+    {
+      "file": "supabase/config.toml",
+      "context_digest": "lngbbaioleigddeecejlaakgakkcdgnnakeoamjnlloaklmigklkopddepeiddpe",
+      "value_digest": "cpmkdegnlgfgbihbacmoiagkmhdcoagkgcnpanllcicjofbbkhhaffgndjiobkgo",
+      "classification": "coincidental"
+    },
+    {
       "file": "supabase/migrations/20261114104958_align_goal_review_scales.sql",
       "context_digest": "gcbggeflknjbifnllnfepknbpcmgjnnigjedkkblhaodgleelhkimpfohdkifpga",
       "value_digest": "djpkjombjaooohlgpenppbbaangdedobajbinaeemhfokmipjojkcfjgbhdpiamj",

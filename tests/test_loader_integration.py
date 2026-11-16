@@ -26,7 +26,7 @@ class LocalWorker(L.Worker):
         self.test=test;self.writes=0;self.queries=[];self.lose_response=False
         self.started=None;self.release=None;self.read_retries=0
     def request(self, suffix, payload=None):
-        if suffix=='':return {'id':L.PROJECT,'name':'Veruschka-IDS-SampleProject','status':'ACTIVE_HEALTHY'}
+        if suffix=='':return {'id':L.PROJECT,'name':'Sukoon-IDS-SampleProject','status':'ACTIVE_HEALTHY'}
         if suffix=='/postgrest':return {'db_schema':'public,graphql_public'}
         if suffix=='/advisors/security':return {'lints':[]}
         raise AssertionError('No remote or HTTP route is available in integration tests')

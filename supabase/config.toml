@@ -1,5 +1,5 @@
 # Local configuration only. No hosted remotes or credentials.
-project_id = "veruschka-ids-local"
+project_id = "sukoon-ids-local"
 
 [api]
 enabled = true
