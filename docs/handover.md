@@ -1,4 +1,169 @@
-# Veruschka IDS handover — additive history
+# Veruschka IDS handover
+
+## Manager summary — 16 November 2026
+
+The synthetic IDS sample is loaded and ready for a controlled demonstration of
+the backend. All 90,319 source rows across 24 data tabs were loaded, with zero
+quarantines and 860 approved warnings. The database has 24 business tables and
+four import-audit tables. The final read-only check confirmed the requested
+counts, the three applied migrations and closed access: RLS on all 28 tables,
+zero policies and no forbidden object, schema or default-ACL grants. The
+security advisor has zero warnings/errors and 28 expected informational notices.
+
+PR #5 brings together the schema, the safer loader, the runners needed to repeat
+the work, tests and this handover. It has not been merged. The successful resume
+stage took about 2 hours 10 minutes in 622 paced batches after the database became
+unresponsive and needed a project restart. Earlier loading and unmeasured
+diagnosis/restart time make that a resume-stage duration, not an end-to-end total.
+Read-only reconciliation established whether the uncertain write committed
+before loading continued. No database changes were made during this handover.
+
+The next PM decisions are whether to reload to populate displayed-value lineage,
+how to scope a Phase 2 dashboard and its deliberate API access, and whether the
+Veruschka name may be used in BD conversations. The original load omitted
+displayed values in a verified 15-row sample; the repo runner now captures them,
+so a fresh rerun will differ from that existing lineage. Reloading is optional
+and left to the PM. Before any real client data, resolve the privacy, durability,
+access, plan/backups, scoring-scale and IQ/height/weight questions below. A human
+must run @codex review, decide on merging, revoke access tokens and review the
+sample for sensitive-looking values.
+
+## What was built and where it lives
+
+| Item | Location |
+|---|---|
+| Database | [Veruschka-IDS-SampleProject](https://supabase.com/dashboard/project/uzofrrrtwqjmtytrbqfr), the only allowed project |
+| Code and review | [GitHub repository](https://github.com/data-culture-goalkeep/Veruschka-IDS-SampleProject), [PR #5](https://github.com/data-culture-goalkeep/Veruschka-IDS-SampleProject/pull/5) |
+| Source | [Synthetic workbook](https://docs.google.com/spreadsheets/d/1ZNF0oGXt06kX5ezohN1HHO4--Z9fsiDVm-D7JXlEooc/edit); approved inventory: [source-audit-v2.json](source-audit-v2.json) |
+| Failure log | [Load failure log Sheet](https://docs.google.com/spreadsheets/d/1b5DlvqHjyjcdWc0El0TBgDo-zNR5dOHy82YmRic4tFg/edit) |
+| Data model | [Diagram](er-diagram.mmd), [model guide](model.md), [fields](fields.md), [machine-readable specification](model-spec.json) |
+| Repeatable operations | [Runbook](runbook.md), scripts/ids_runner.py and scripts/load_ids.py; versioned manifests in config/ |
+| PM Learnings | [Project Context Google Doc](https://docs.google.com/document/d/1wcPv25Dift4foLpyvT79dNyud_91Xwr604ivXSs93qY/edit?tab=t.0), PM tab |
+
+The model stores learner/programme information and audit evidence linking loaded
+records back to their source rows. The loader checks approved sources, stops on
+failed or uncertain writes, keeps parent records ahead of children, and commits
+business rows, lineage and checkpoints together. Working snapshots and journals
+are private under ignored work/; they are not part of the repo.
+
+## Final read-only verification — 16 November 2026
+
+| Table | Expected | Observed |
+|---|---:|---:|
+| ids.criterion_score | 64,855 | 64,855 |
+| ids.goal_review | 4,455 | 4,455 |
+| ids.assessment_event | 1,853 | 1,853 |
+| ids.learner_session_log | 12,139 | 12,139 |
+| ids_import.source_row | 90,319 | 90,319 |
+| ids_import.import_chunk | 1,228 | 1,228 |
+
+Applied migration versions are 20261113125204, 20261113125216 and 20261114104958,
+exactly matching supabase/migrations. The extended security verification passed:
+RLS on all 28 tables, zero policies, zero forbidden existing-object/schema/default
+ACL grants, fee views using the caller's permissions, the public helper EXECUTE
+restrictions retained, and ids/ids_import excluded from the Data API. Advisor:
+28 INFO, zero WARN, zero ERROR. This handover used 11 worker requests (eight
+read-only queries and three metadata/advisor GETs), no retries and no data or
+privilege changes. The earlier final load reconciliation established all 90,319
+considered rows = loaded rows, zero quarantines, and 860 retained warning issues.
+The failure log was previously checked: zero active failures and one historical
+uncertain-write entry marked resolved. It was not freshly reread in this check.
+
+## Decisions and how to rerun
+
+- Demo goal-review limits were widened only upwards: SMART uses 1–5;
+  Functional Learning and Hospitality use 0–5. Lower limits stayed unchanged.
+  The applied additive migration records the change; real-client scales remain open.
+- Monthly Target YYYY-MM is converted to YYYY-MM-01; raw month text is retained.
+- Retain 471 weekly-check placements, 61 non-delivered-session dates and 328
+  Holiday/Cancelled logs as warnings, rather than discarding those records.
+- Accept the 11 additional Reference List options in the versioned manifest.
+- IQ, height and weight were loaded as supplied; their real-client use remains open.
+
+Follow [docs/runbook.md](runbook.md) for prerequisites and exact capture, dry-run,
+trial, full-load, uncertain-write reconciliation, row-only clear and verification
+commands. Writes require an explicit flag plus an approved manifest. Do not
+reuse the old journal with fresh displayed-value captures, bypass changed-record
+checks, clear tables or reload without separate approval. Journal/state locations
+and recovery steps are documented there. Reloading is optional and left to the PM.
+
+## Not done yet
+
+Before any real client data:
+
+- Parameterised transport with verified request/database logging controls. Values
+  currently appear in SQL text and could reach infrastructure logs.
+- Durable journal storage and a tested recovery process across task replacement.
+- An agreed access model, including who may see sensitive details.
+- A decision on the paid plan, backups and restore testing.
+- Confirmation of real-client goal-review scales.
+- A decision on whether IQ, height and weight are needed, their units/meaning,
+  and who may access them.
+
+Showcase next step: a Phase 2 front-end dashboard with deliberate API access.
+Keep private schemas closed until that access is designed and approved. Check
+permission to use the Veruschka name in business-development conversations.
+
+Only a human can complete the requested @codex review, merge PR #5, delete/revoke
+Supabase access tokens, and review the sample for sensitive-looking values.
+No token deletion, merge or new access grant was performed here.
+
+## PM Learnings
+
+The successful resume took about 2h10m across 622 paced data batches. The database
+had become unresponsive and needed a user-performed project restart. The
+stop-and-reconcile approach worked: read-only evidence resolved the uncertain
+batch before any retry. Earlier load work took additional time; the end-to-end
+duration and restart/diagnosis time are not measured overall.
+
+Reviews caught defects in scale limits, timezone/extra-row checks, displayed-value
+lineage, schema/default ACL checks and audit classification. Per-chunk
+reconciliation was too slow and was replaced with a fixed inventory query.
+Operational runners were initially missing from the repo and were later audited
+and added; code and private inputs should be separated from the start.
+
+The original load did not store displayed values in the 15 verified sample rows.
+The repo now captures them; a rerun would differ from current sampled lineage.
+An optional reload is a PM choice, not an automatic correction. The widened
+scales match this demo dataset; they do not settle the real-client scale.
+
+The working worker setup needs api.supabase.com on the outbound domain allowlist,
+SUPABASE_PROJECT_REF as the allowed ref and SUPABASE_ACCESS_TOKEN as a domain-bound
+secret. Start a fresh task after changing those bindings. Existing tasks do not
+pick up changed secrets or network bindings retroactively. Values still travel
+inside SQL statement text; real-client data needs parameterised transport and
+verified log controls before loading.
+
+## Audit review and PM-tab publication — 16 November 2026
+
+The stronger source-value audit initially flagged 390 file/value matches across
+87 distinct numeric values. Review classified all 390 as coincidental numeric
+metadata or invented fixture constants (classification 1); classification 2
+(schema/reference range constants) and classification 3 (actual copied source
+values) were both zero. No copied source record was found or retained. The
+per-match [triage report](audit-triage.md) contains only file, line, field category
+and classification. Do not interpret that review as blanket approval of these
+values in other files or contexts.
+
+The reviewed registry binds each exception to its file, exact line context and
+matched-value digest. New or changed contexts still fail. All fields in the
+sensitive-details table, including disability percent, and income/IQ/height/weight
+measurements are now classified as sensitive. The scanner no longer includes
+source-line excerpts in findings. It checks every matching line, not only the
+first occurrence. New handover/report metadata is also reviewed context by
+context, without global exemptions for numbers or approved model metadata.
+
+PM Learnings were added to the supplied Project Context Google Doc's PM tab and
+verified by readback. The supplied Doc was empty with a single Tab 1, which was
+renamed PM; no pre-existing project content was replaced. This repo handover
+preserves the earlier detailed history below.
+
+## Dated implementation history
+
+The sections below preserve the original evidence and earlier stopped states.
+The current summary above supersedes historical statements that loading or
+verification was still pending.
+
 
 ## 2026-11-13 — Stage 1 environment/access check
 

@@ -365,3 +365,24 @@ normal reconciliation gates; this change authorizes no reload or database edit.
 Worker pacing/backoff, no automatic write retries, timezone validation and the
 five-row FORMULA sentinel remain unchanged. Capture's Sheets reads fail closed;
 they do not acquire automatic write retries or mutate the workbook.
+
+
+## Reviewed sensitive-value overlaps — 16 November 2026
+
+The audit treats the five income/IQ/height/weight fields and all fields in the
+sensitive-details table as sensitive. It checks every matching line, including
+later copies in a file. Sensitive values cannot escape via numeric, reference
+or approved-metadata exceptions. Reports expose file/line/category and a digest,
+never source values or surrounding text.
+
+The one-time review is recorded in [audit-triage.md](audit-triage.md). Narrow
+exceptions in config/audit-reviewed-contexts.json bind a file path, exact line
+context digest and matched-value digest to either a coincidental number or a
+schema/reference boundary. SHA-256 digests use a-p in place of hexadecimal digits
+so the registry itself does not contain literal numeric source values in hashes.
+There are no global value exemptions or production commands to approve matches
+automatically. A changed context or a copy in another file requires new review;
+new tests prove those cases fail. Review and update the registry deliberately
+when a legitimate contextual exception changes. Never register copied source
+records or source-derived statistical examples as exceptions. The registry is
+not a substitute for a human privacy review of the synthetic sample.
