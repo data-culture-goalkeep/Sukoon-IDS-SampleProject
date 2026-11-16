@@ -1,4 +1,4 @@
-# Veruschka IDS model
+# Sukoon IDS model
 
 ## Status and authority
 

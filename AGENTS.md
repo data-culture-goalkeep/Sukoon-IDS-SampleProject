@@ -1,4 +1,4 @@
-# Veruschka IDS working rules
+# Sukoon IDS working rules
 
 - Allowed hosted Supabase project only: `uzofrrrtwqjmtytrbqfr`.
 - Never access any project in the client's organisation.

@@ -160,7 +160,7 @@ The throwaway container and per-case databases were removed after testing.
 ## 2026-11-13 — Trial/full load paused at first-run progress-state gate
 
 The user authorized the synthetic-data trial and full load only on
-Veruschka-IDS-SampleProject (`uzofrrrtwqjmtytrbqfr`), through the worker route
+Sukoon-IDS-SampleProject (`uzofrrrtwqjmtytrbqfr`), through the worker route
 using PR #2 commit `097b1f00bf68a97faebd02ffcb9666d34fbf8229`. They required an
 immediate stop on failed, uncertain or unexpected results and explicit approval
 after read-only reconciliation of missing/untrusted progress state.
@@ -283,7 +283,7 @@ inferred from these calls.
 
 Recorded 2026-11-14 13:38:22 IST. The user explicitly approved resuming the reconciled first-run
 state and continuing directly from a successful database trial into the full load.
-Only Veruschka-IDS-SampleProject (`uzofrrrtwqjmtytrbqfr`) was accessed, on the
+Only Sukoon-IDS-SampleProject (`uzofrrrtwqjmtytrbqfr`) was accessed, on the
 worker route, using the unchanged loader at PR #2 commit
 `097b1f00bf68a97faebd02ffcb9666d34fbf8229`. No merge, seed, Auth-account creation,
 source-sheet edit, schema/access change or transport change was performed.

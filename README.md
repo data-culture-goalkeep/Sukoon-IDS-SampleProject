@@ -1,6 +1,6 @@
-# Veruschka IDS sample project
+# Sukoon IDS sample project
 
-Private, audited data model for the Veruschka Foundation's synthetic sample build.
+Private, audited data model for the Sukoon IDS synthetic sample build.
 Synthetic identity, financial and medical fields are treated as sensitive.
 
 **Stage 3: PR review only. No hosted migration application or source loading is
