@@ -1,7 +1,7 @@
 # Veruschka IDS working rules
 
 - Allowed hosted Supabase project only: `uzofrrrtwqjmtytrbqfr`.
-- Never access `pcxicqcroyrmysqgmmtp` or projects in the client's organisation.
+- Never access any project in the client's organisation.
 - Stage 3 is approved only through opening a PR. Do not apply migrations remotely,
   load source data, configure access, create Auth users, or merge without explicit approval.
 - Treat synthetic identity, medical, income and contact fields as sensitive.
