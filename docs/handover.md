@@ -11,7 +11,7 @@ zero policies and no forbidden object, schema or default-ACL grants. The
 security advisor has zero warnings/errors and 28 expected informational notices.
 
 PR #5 brings together the schema, the safer loader, the runners needed to repeat
-the work, tests and this handover. It has not been merged. The successful resume
+the work, tests and this handover. PR #5 was merged on 16 November 2026. The successful resume
 stage took about 2 hours 10 minutes in 622 paced batches after the database became
 unresponsive and needed a project restart. Earlier loading and unmeasured
 diagnosis/restart time make that a resume-stage duration, not an end-to-end total.
@@ -24,9 +24,9 @@ Veruschka name may be used in BD conversations. The original load omitted
 displayed values in a verified 15-row sample; the repo runner now captures them,
 so a fresh rerun will differ from that existing lineage. Reloading is optional
 and left to the PM. Before any real client data, resolve the privacy, durability,
-access, plan/backups, scoring-scale and IQ/height/weight questions below. A human
-must run @codex review, decide on merging, revoke access tokens and review the
-sample for sensitive-looking values.
+access, plan/backups, scoring-scale and IQ/height/weight questions below. The remaining human
+steps are to revoke access tokens and review the sample for sensitive-looking
+values.
 
 ## What was built and where it lives
 
@@ -104,9 +104,10 @@ Showcase next step: a Phase 2 front-end dashboard with deliberate API access.
 Keep private schemas closed until that access is designed and approved. Check
 permission to use the Veruschka name in business-development conversations.
 
-Only a human can complete the requested @codex review, merge PR #5, delete/revoke
-Supabase access tokens, and review the sample for sensitive-looking values.
-No token deletion, merge or new access grant was performed here.
+PR #5 was merged on 16 November 2026. The remaining human steps are to
+delete/revoke Supabase access tokens and review the sample for sensitive-looking
+values. Future PRs still require human review and a merge decision.
+No token deletion, new merge or new access grant was performed in this docs update.
 
 ## PM Learnings
 
